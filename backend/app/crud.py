@@ -1,0 +1,202 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from typing import Iterable, List, Optional
+
+from sqlalchemy.orm import Session
+
+from .models import Card, Collection, StudyLog, User, card_collection
+from .srs import apply_sm2
+
+
+def _dump_list(value: Optional[Iterable[str]]) -> str:
+    return json.dumps(list(value or []), ensure_ascii=False)
+
+
+def _load_list(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return [value]
+
+
+def ensure_demo_user(db: Session) -> User:
+    user = db.query(User).filter(User.username == "demo").first()
+    if user:
+        return user
+    user = User(username="demo", hashed_password="demo", settings_json="{}")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def get_user(db: Session, user_id: int) -> Optional[User]:
+    return db.query(User).filter(User.id == user_id).first()
+
+
+def list_collections(db: Session, owner_id: int) -> List[Collection]:
+    return db.query(Collection).filter(Collection.owner_id == owner_id).all()
+
+
+def create_collection(db: Session, owner_id: int, name: str, description: str) -> Collection:
+    collection = Collection(owner_id=owner_id, name=name, description=description)
+    db.add(collection)
+    db.commit()
+    db.refresh(collection)
+    return collection
+
+
+def create_card(
+    db: Session,
+    owner_id: int,
+    simplified: str,
+    pinyin: str,
+    meanings: Iterable[str],
+    examples: Iterable[str],
+    tags: Iterable[str],
+    created_from_dict_id: Optional[int],
+    collection_ids: Iterable[int]
+) -> Card:
+    now = datetime.utcnow()
+    card = Card(
+        owner_id=owner_id,
+        simplified=simplified,
+        pinyin=pinyin,
+        meanings_json=_dump_list(meanings),
+        examples_json=_dump_list(examples),
+        tags_json=_dump_list(tags),
+        created_from_dict_id=created_from_dict_id,
+        next_due=now,
+        updated_at=now
+    )
+    db.add(card)
+    db.commit()
+    db.refresh(card)
+
+    if collection_ids:
+        collections = (
+            db.query(Collection)
+            .filter(Collection.owner_id == owner_id)
+            .filter(Collection.id.in_(list(collection_ids)))
+            .all()
+        )
+        for collection in collections:
+            collection.cards.append(card)
+        db.commit()
+        db.refresh(card)
+
+    return card
+
+
+def list_cards(
+    db: Session,
+    owner_id: int,
+    collection_id: Optional[int] = None,
+    query: Optional[str] = None
+) -> List[Card]:
+    q = db.query(Card).filter(Card.owner_id == owner_id)
+    if collection_id is not None:
+        q = q.join(card_collection).filter(card_collection.c.collection_id == collection_id)
+    if query:
+        like_query = f"%{query}%"
+        q = q.filter(Card.simplified.like(like_query) | Card.pinyin.like(like_query))
+    return q.order_by(Card.next_due.asc()).all()
+
+
+def record_study(
+    db: Session,
+    user_id: int,
+    card_id: int,
+    quality: int,
+    response_time_ms: int
+) -> tuple[Card, StudyLog]:
+    card = db.query(Card).filter(Card.owner_id == user_id, Card.id == card_id).first()
+    if not card:
+        raise ValueError("Card not found")
+
+    apply_sm2(card, quality)
+    log = StudyLog(
+        card_id=card.id,
+        user_id=user_id,
+        ease=quality,
+        correct=quality >= 3,
+        response_time_ms=response_time_ms
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(card)
+    db.refresh(log)
+    return card, log
+
+
+def card_to_dict(card: Card) -> dict:
+    return {
+        "id": card.id,
+        "owner_id": card.owner_id,
+        "simplified": card.simplified,
+        "pinyin": card.pinyin,
+        "meanings": _load_list(card.meanings_json),
+        "examples": _load_list(card.examples_json),
+        "tags": _load_list(card.tags_json),
+        "created_from_dict_id": card.created_from_dict_id,
+        "easiness": card.easiness,
+        "interval_days": card.interval_days,
+        "repetitions": card.repetitions,
+        "next_due": card.next_due
+    }
+
+
+def dump_user_data(db: Session, user_id: int) -> dict:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise ValueError("User not found")
+
+    collections = list_collections(db, user_id)
+    cards = list_cards(db, user_id)
+    study_logs = db.query(StudyLog).filter(StudyLog.user_id == user_id).all()
+
+    last_modified = user.updated_at
+    for collection in collections:
+        if collection.updated_at and collection.updated_at > last_modified:
+            last_modified = collection.updated_at
+    for card in cards:
+        if card.updated_at and card.updated_at > last_modified:
+            last_modified = card.updated_at
+    for log in study_logs:
+        if log.timestamp and log.timestamp > last_modified:
+            last_modified = log.timestamp
+
+    return {
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "settings": json.loads(user.settings_json or "{}")
+        },
+        "collections": [
+            {
+                "id": collection.id,
+                "owner_id": collection.owner_id,
+                "name": collection.name,
+                "description": collection.description
+            }
+            for collection in collections
+        ],
+        "cards": [card_to_dict(card) for card in cards],
+        "study_logs": [
+            {
+                "id": log.id,
+                "card_id": log.card_id,
+                "user_id": log.user_id,
+                "timestamp": log.timestamp,
+                "ease": log.ease,
+                "correct": log.correct,
+                "response_time_ms": log.response_time_ms
+            }
+            for log in study_logs
+        ],
+        "last_modified": last_modified
+    }

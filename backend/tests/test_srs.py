@@ -1,23 +1,26 @@
 from datetime import datetime
 
-from app.models import Flashcard
-from app.services.srs import schedule_review
+from app.models import Card
+from app.srs import apply_sm2
 
 
-def test_schedule_review_resets_on_low_rating():
-    card = Flashcard(
-        hanzi="NI HAO",
+def test_apply_sm2_resets_on_low_quality():
+    card = Card(
+        owner_id=1,
+        simplified="NI HAO",
         pinyin="ni3 hao3",
-        english="hello",
-        ease_factor=2.5,
+        meanings_json="[]",
+        examples_json="[]",
+        tags_json="[]",
+        easiness=2.5,
         interval_days=3,
-        repetition=2,
-        due_at=datetime.utcnow(),
+        repetitions=2,
+        next_due=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
 
-    updated = schedule_review(card, rating=1, now=datetime(2024, 1, 1))
+    updated = apply_sm2(card, quality=1, now=datetime(2024, 1, 1))
 
-    assert updated.repetition == 0
+    assert updated.repetitions == 0
     assert updated.interval_days == 1
-    assert updated.ease_factor >= 1.3
+    assert updated.easiness >= 1.3

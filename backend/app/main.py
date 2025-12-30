@@ -1,36 +1,21 @@
-from datetime import datetime
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
-from .api.routes import router
+from .api import api_router
+from .crud import ensure_demo_user
 from .db import Base, SessionLocal, engine
-from .models import Flashcard
 
-app = FastAPI(title="Simplified Chinese Flashcards API", version="0.1.0")
-app.include_router(router)
-
-
-def seed_demo_data() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        if db.query(Flashcard).count() == 0:
-            db.add(
-                Flashcard(
-                    hanzi="NI HAO",
-                    pinyin="ni3 hao3",
-                    english="hello",
-                    ease_factor=2.5,
-                    interval_days=0,
-                    repetition=0,
-                    due_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
-                )
-            )
-            db.commit()
+        ensure_demo_user(db)
     finally:
         db.close()
+    yield
 
 
-@app.on_event("startup")
-def on_startup() -> None:
-    Base.metadata.create_all(bind=engine)
-    seed_demo_data()
+app = FastAPI(title="Simplified Chinese Flashcards API", version="0.2.0", lifespan=lifespan)
+app.include_router(api_router)
