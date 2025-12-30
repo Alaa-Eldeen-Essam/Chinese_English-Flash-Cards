@@ -20,3 +20,8 @@ __pycache__/
 
 # Logs
 *.log
+
+# Data imports
+data/raw/*
+!data/raw/.gitkeep
+data/cedict_import.json
