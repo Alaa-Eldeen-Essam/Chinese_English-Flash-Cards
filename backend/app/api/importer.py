@@ -26,7 +26,7 @@ def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)) -> 
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
 
-    safe_name = file.filename.replace("..", "").replace("/", "_").replace("\\\\", "_")
+    safe_name = file.filename.replace("..", "").replace("/", "_").replace("\\", "_")
     dest = raw_dir / safe_name
     content = file.file.read()
     dest.write_bytes(content)

@@ -368,6 +368,15 @@ textarea {
   font-family: inherit;
 }
 
+select {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+}
+
 textarea {
   min-height: 80px;
   resize: vertical;
@@ -385,6 +394,12 @@ textarea {
   align-items: center;
   gap: 8px;
   font-size: 14px;
+}
+
+.mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
 }
 
 .progress {
@@ -408,6 +423,32 @@ textarea {
   transform: translateY(-50%);
   font-size: 11px;
   color: #fff;
+}
+
+.log-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.log-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f7f2e8;
+  font-size: 12px;
+}
+
+.log-info {
+  color: var(--muted);
+}
+
+.log-error {
+  color: #a44d3a;
 }
 
 .empty {
