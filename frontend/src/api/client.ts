@@ -3,6 +3,9 @@ import type {
   AuthUser,
   Card,
   Collection,
+  DatasetInfo,
+  DatasetPack,
+  DatasetSelection,
   ImportJob,
   StudyLog,
   StudyResponse,
@@ -143,6 +146,34 @@ export async function updateSettings(settings: Record<string, unknown>): Promise
 
 export async function fetchUserDump(): Promise<UserData> {
   return request<UserData>(`${API_PREFIX}/admin/dump`);
+}
+
+export async function fetchDatasetCatalog(): Promise<DatasetInfo[]> {
+  return request<DatasetInfo[]>(`${API_PREFIX}/datasets/catalog`);
+}
+
+export async function getDatasetSelection(): Promise<DatasetSelection> {
+  return request<DatasetSelection>(`${API_PREFIX}/datasets/selection`);
+}
+
+export async function updateDatasetSelection(selected: string[]): Promise<DatasetSelection> {
+  return request<DatasetSelection>(`${API_PREFIX}/datasets/selection`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ selected })
+  });
+}
+
+export async function fetchDatasetPack(
+  datasetId: string,
+  offset = 0,
+  limit = 500
+): Promise<DatasetPack> {
+  const url = new URL(`${API_PREFIX}/datasets/pack`);
+  url.searchParams.set("dataset_id", datasetId);
+  url.searchParams.set("offset", String(offset));
+  url.searchParams.set("limit", String(limit));
+  return request<DatasetPack>(url.toString());
 }
 
 export async function syncUserData(payload: {

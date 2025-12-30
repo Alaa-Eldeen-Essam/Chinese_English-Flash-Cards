@@ -1,17 +1,31 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 import ProgressBar from "../components/ProgressBar";
-import { getImportStatus, triggerImport, uploadImportFile } from "../api/client";
+import {
+  fetchDatasetCatalog,
+  fetchDatasetPack,
+  getDatasetSelection,
+  getImportStatus,
+  triggerImport,
+  updateDatasetSelection,
+  uploadImportFile
+} from "../api/client";
 import { useAppStore } from "../store/AppStore";
-import type { ImportJob } from "../types";
-
-const LEVELS = [1, 2, 3, 4, 5, 6];
+import type { DatasetInfo, DatasetMeta, ImportJob } from "../types";
+import {
+  clearDatasetEntries,
+  getDatasetMeta,
+  setDatasetMeta,
+  storeDatasetEntries
+} from "../utils/indexedDb";
 
 export default function Import(): JSX.Element {
-  const { userData } = useAppStore();
-  const [selected, setSelected] = useState<number[]>([1, 2]);
-  const [progress, setProgress] = useState(0);
+  const { userData, updateUserData, isOnline } = useAppStore();
+  const [catalog, setCatalog] = useState<DatasetInfo[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [downloadState, setDownloadState] = useState<Record<string, DatasetMeta>>({});
   const [downloading, setDownloading] = useState(false);
+  const [datasetStatus, setDatasetStatus] = useState<string | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
@@ -45,30 +59,76 @@ export default function Import(): JSX.Element {
   const [dedupe, setDedupe] = useState(true);
   const [replace, setReplace] = useState(false);
   const [job, setJob] = useState<ImportJob | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    let timer: number | null = null;
-    if (downloading) {
-      timer = window.setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            if (timer) {
-              window.clearInterval(timer);
-            }
-            setDownloading(false);
-            return 100;
-          }
-          return prev + 4;
-        });
-      }, 300);
-    }
-    return () => {
-      if (timer) {
-        window.clearInterval(timer);
+    let active = true;
+
+    async function loadCatalog() {
+      try {
+        const datasets = await fetchDatasetCatalog();
+        if (active) {
+          setCatalog(datasets);
+        }
+      } catch {
+        if (active) {
+          setDatasetStatus("Unable to load dataset catalog.");
+        }
       }
+    }
+
+    async function loadSelection() {
+      try {
+        const selection = await getDatasetSelection();
+        if (active) {
+          setSelected(selection.selected);
+        }
+      } catch {
+        // Keep local selection while offline.
+      }
+    }
+
+    async function loadDownloadState() {
+      try {
+        const meta = await getDatasetMeta();
+        if (!active) {
+          return;
+        }
+        const mapped: Record<string, DatasetMeta> = {};
+        meta.forEach((item) => {
+          mapped[item.dataset_id] = item;
+        });
+        setDownloadState(mapped);
+      } catch {
+        // Ignore IDB errors.
+      }
+    }
+
+    void loadCatalog();
+    void loadSelection();
+    void loadDownloadState();
+
+    return () => {
+      active = false;
     };
-  }, [downloading]);
+  }, []);
+
+  useEffect(() => {
+    if (selected.length > 0) {
+      return;
+    }
+    const localSettings = userData.user.settings;
+    const localDatasets =
+      typeof localSettings === "object" && localSettings !== null
+        ? (localSettings as Record<string, unknown>).datasets
+        : undefined;
+    const localSelected = Array.isArray((localDatasets as { selected?: unknown })?.selected)
+      ? ((localDatasets as { selected?: string[] }).selected ?? [])
+      : [];
+    if (localSelected.length > 0) {
+      setSelected(localSelected);
+    }
+  }, [selected.length, userData.user.settings]);
 
   useEffect(() => {
     if (!job || job.status === "done" || job.status === "error") {
@@ -80,44 +140,164 @@ export default function Import(): JSX.Element {
         const updated = await getImportStatus(job.job_id);
         setJob(updated);
       } catch (error) {
-        setStatus("Unable to reach import status endpoint.");
+        setImportStatus("Unable to reach import status endpoint.");
       }
     }, 1500);
 
     return () => window.clearInterval(timer);
   }, [job]);
 
-  function toggleLevel(level: number) {
+  function toggleDataset(datasetId: string) {
     setSelected((prev) =>
-      prev.includes(level) ? prev.filter((item) => item !== level) : [...prev, level]
+      prev.includes(datasetId)
+        ? prev.filter((item) => item !== datasetId)
+        : [...prev, datasetId]
     );
   }
 
-  function startDownload() {
-    setProgress(0);
+  async function handleSaveSelection() {
+    setDatasetStatus(null);
+    const localSelection = {
+      selected,
+      updated_at: new Date().toISOString()
+    };
+    const currentSettings =
+      typeof userData.user.settings === "object" && userData.user.settings !== null
+        ? userData.user.settings
+        : {};
+    const nextSettings = {
+      ...currentSettings,
+      datasets: localSelection
+    };
+    updateUserData({
+      ...userData,
+      user: {
+        ...userData.user,
+        settings: nextSettings
+      }
+    });
+
+    try {
+      await updateDatasetSelection(selected);
+      setDatasetStatus("Selection saved.");
+    } catch (error) {
+      setDatasetStatus("Saved locally. Sync when online.");
+    }
+  }
+
+  async function downloadDataset(dataset: DatasetInfo) {
+    if (dataset.status !== "available") {
+      return;
+    }
+    const pageSize = dataset.id === "cedict" ? 1000 : 500;
+    const now = new Date().toISOString();
+    const meta: DatasetMeta = {
+      dataset_id: dataset.id,
+      status: "downloading",
+      total: 0,
+      downloaded: 0,
+      updated_at: now,
+      version: dataset.version
+    };
+    setDownloadState((prev) => ({ ...prev, [dataset.id]: meta }));
+    await setDatasetMeta(meta);
+    await clearDatasetEntries(dataset.id);
+
+    let offset = 0;
+    let total = 0;
+
+    try {
+      while (true) {
+        const pack = await fetchDatasetPack(dataset.id, offset, pageSize);
+        if (offset === 0) {
+          total = pack.total;
+        }
+        if (pack.items.length === 0) {
+          break;
+        }
+        await storeDatasetEntries(dataset.id, pack.items);
+        offset += pack.items.length;
+        const updatedMeta: DatasetMeta = {
+          dataset_id: dataset.id,
+          status: "downloading",
+          total,
+          downloaded: offset,
+          updated_at: new Date().toISOString(),
+          version: dataset.version
+        };
+        setDownloadState((prev) => ({ ...prev, [dataset.id]: updatedMeta }));
+        await setDatasetMeta(updatedMeta);
+        if (offset >= total) {
+          break;
+        }
+      }
+
+      const finalMeta: DatasetMeta = {
+        dataset_id: dataset.id,
+        status: "done",
+        total,
+        downloaded: offset,
+        updated_at: new Date().toISOString(),
+        version: dataset.version
+      };
+      setDownloadState((prev) => ({ ...prev, [dataset.id]: finalMeta }));
+      await setDatasetMeta(finalMeta);
+    } catch (error) {
+      const errorMeta: DatasetMeta = {
+        dataset_id: dataset.id,
+        status: "error",
+        total,
+        downloaded: offset,
+        updated_at: new Date().toISOString(),
+        version: dataset.version,
+        error: "Download failed"
+      };
+      setDownloadState((prev) => ({ ...prev, [dataset.id]: errorMeta }));
+      await setDatasetMeta(errorMeta);
+    }
+  }
+
+  async function handleDownloadSelected() {
+    if (!isOnline) {
+      setDatasetStatus("Reconnect to download datasets.");
+      return;
+    }
+    setDatasetStatus(null);
+    const available = catalog.filter(
+      (dataset) => selected.includes(dataset.id) && dataset.status === "available"
+    );
+    if (available.length === 0) {
+      setDatasetStatus("No available datasets selected.");
+      return;
+    }
     setDownloading(true);
+    for (const dataset of available) {
+      await downloadDataset(dataset);
+    }
+    setDownloading(false);
+    setDatasetStatus("Download queue finished.");
   }
 
   async function handleUpload() {
     if (!file) {
       return;
     }
-    setStatus("Uploading...");
+    setImportStatus("Uploading...");
     try {
       const result = await uploadImportFile(file);
       setFileId(result.file_id);
-      setStatus(`Uploaded: ${result.filename}`);
+      setImportStatus(`Uploaded: ${result.filename}`);
     } catch (error) {
-      setStatus("Upload failed. Check backend connection.");
+      setImportStatus("Upload failed. Check backend connection.");
     }
   }
 
   async function handleTriggerImport() {
     if (!fileId) {
-      setStatus("Upload a file before importing.");
+      setImportStatus("Upload a file before importing.");
       return;
     }
-    setStatus("Import started...");
+    setImportStatus("Import started...");
     try {
       const response = await triggerImport({
         file_id: fileId,
@@ -137,7 +317,7 @@ export default function Import(): JSX.Element {
         finished_at: null
       });
     } catch (error) {
-      setStatus("Import failed to start. Check backend connection.");
+      setImportStatus("Import failed to start. Check backend connection.");
     }
   }
 
@@ -168,40 +348,79 @@ export default function Import(): JSX.Element {
 
       <div className="panel-grid">
         <div className="panel">
-          <h2>Dataset selection</h2>
-          <p className="muted">CC-CEDICT (~20MB) plus optional HSK levels.</p>
-          <div className="checkbox-grid">
-            {LEVELS.map((level) => (
-              <label key={level} className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(level)}
-                  onChange={() => toggleLevel(level)}
-                />
-                HSK {level}
-              </label>
-            ))}
+          <h2>Dataset catalog</h2>
+          <p className="muted">Pick datasets to download and keep available offline.</p>
+          {catalog.length > 0 ? (
+            <ul className="list selectable">
+              {catalog.map((dataset) => {
+                const isSelected = selected.includes(dataset.id);
+                const disabled = dataset.status !== "available";
+                return (
+                  <li
+                    key={dataset.id}
+                    className={isSelected ? "active" : ""}
+                  >
+                    <label className="checkbox">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleDataset(dataset.id)}
+                        disabled={disabled}
+                      />
+                      <div>
+                        <div>{dataset.name}</div>
+                        <div className="muted">{dataset.description}</div>
+                      </div>
+                    </label>
+                    <span className="muted">
+                      {dataset.size_mb} MB · {dataset.status}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="muted">Loading datasets...</p>
+          )}
+          <div className="inline-meta">
+            <button className="secondary" onClick={handleSaveSelection}>
+              Save selection
+            </button>
+            <button
+              className="primary"
+              onClick={handleDownloadSelected}
+              disabled={downloading || selected.length === 0}
+            >
+              {downloading ? "Downloading..." : "Download selected"}
+            </button>
           </div>
-          <button className="primary" onClick={startDownload} disabled={downloading}>
-            {downloading ? "Downloading..." : "Download datasets"}
-          </button>
-          <p className="muted">
-            Estimated time: {selected.length * 2 + 4} minutes on slow networks.
-          </p>
+          {datasetStatus && <p className="muted">{datasetStatus}</p>}
         </div>
         <div className="panel">
           <h2>Download status</h2>
-          {downloading || progress > 0 ? (
-            <>
-              <ProgressBar value={progress} />
-              <p className="muted">Preparing CC-CEDICT and HSK {selected.join(", ")}</p>
-            </>
+          {Object.keys(downloadState).length > 0 ? (
+            <div className="form">
+              {Object.values(downloadState).map((meta) => {
+                const dataset = catalog.find((item) => item.id === meta.dataset_id);
+                const total = meta.total || 0;
+                const percent = total > 0 ? Math.round((meta.downloaded / total) * 100) : 0;
+                return (
+                  <div key={meta.dataset_id}>
+                    <div className="inline-meta">
+                      <span>{dataset?.name ?? meta.dataset_id}</span>
+                      <span>{meta.status}</span>
+                      <span>
+                        {meta.downloaded}/{total || "?"}
+                      </span>
+                    </div>
+                    <ProgressBar value={percent} />
+                  </div>
+                );
+              })}
+            </div>
           ) : (
-            <p className="muted">Ready when you are.</p>
+            <p className="muted">No downloads yet.</p>
           )}
-          <p className="muted">
-            Hook this UI to `scripts/import_dict.py` or a backend import endpoint.
-          </p>
         </div>
       </div>
 
@@ -272,7 +491,7 @@ export default function Import(): JSX.Element {
             <button className="primary" onClick={handleTriggerImport} disabled={!fileId}>
               Trigger import
             </button>
-            {status && <p className="muted">{status}</p>}
+            {importStatus && <p className="muted">{importStatus}</p>}
           </div>
         </div>
 

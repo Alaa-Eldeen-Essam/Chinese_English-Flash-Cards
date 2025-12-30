@@ -212,6 +212,27 @@ class ImportStatusResponse(BaseModel):
     finished_at: datetime | None = None
 
 
+class DatasetInfo(BaseModel):
+    id: str
+    name: str
+    description: str
+    kind: str
+    size_mb: float
+    version: str
+    status: str
+    source_url: str | None = None
+    filters: dict | None = None
+
+
+class DatasetSelectionRequest(BaseModel):
+    selected: List[str] = Field(default_factory=list)
+
+
+class DatasetSelectionResponse(BaseModel):
+    selected: List[str]
+    updated_at: datetime
+
+
 class DictWordOut(BaseModel):
     id: int
     simplified: str
@@ -224,6 +245,14 @@ class DictWordOut(BaseModel):
     hsk_level: int | None = None
     pos: str | None = None
     frequency: float | None = None
+
+
+class DatasetPackResponse(BaseModel):
+    dataset_id: str
+    total: int
+    offset: int
+    limit: int
+    items: List[DictWordOut]
 
 
 class DictFacetCounts(BaseModel):

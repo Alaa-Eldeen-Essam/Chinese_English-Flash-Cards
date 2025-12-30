@@ -20,6 +20,55 @@ export type AuthResponse = {
   token: AuthToken;
 };
 
+export type DictWord = {
+  id: number;
+  simplified: string;
+  traditional?: string | null;
+  pinyin?: string | null;
+  pinyin_normalized?: string | null;
+  meanings: string[];
+  examples: string[];
+  tags: string[];
+  hsk_level?: number | null;
+  pos?: string | null;
+  frequency?: number | null;
+};
+
+export type DatasetInfo = {
+  id: string;
+  name: string;
+  description: string;
+  kind: string;
+  size_mb: number;
+  version: string;
+  status: string;
+  source_url?: string | null;
+  filters?: Record<string, unknown> | null;
+};
+
+export type DatasetSelection = {
+  selected: string[];
+  updated_at: string;
+};
+
+export type DatasetPack = {
+  dataset_id: string;
+  total: number;
+  offset: number;
+  limit: number;
+  items: DictWord[];
+};
+
+export type DatasetMeta = {
+  dataset_id: string;
+  status: "queued" | "downloading" | "done" | "error";
+  total: number;
+  downloaded: number;
+  updated_at: string;
+  version?: string;
+  error?: string | null;
+};
+
 export type Collection = {
   id: number;
   owner_id: number;
