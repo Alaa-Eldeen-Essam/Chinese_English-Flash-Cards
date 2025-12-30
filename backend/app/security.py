@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Tuple
@@ -9,10 +8,12 @@ from typing import Any, Dict, Tuple
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-SECRET_KEY = os.getenv("JWT_SECRET", "dev-secret-change-me")
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_EXPIRE_MINUTES", "30"))
-REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_EXPIRE_DAYS", "14"))
+from .config import settings
+
+SECRET_KEY = settings.jwt_secret
+ALGORITHM = settings.jwt_algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.jwt_access_expires_minutes
+REFRESH_TOKEN_EXPIRE_DAYS = settings.jwt_refresh_expires_days
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

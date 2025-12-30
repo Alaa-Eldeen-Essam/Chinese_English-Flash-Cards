@@ -1,11 +1,11 @@
 import json
-import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..crud import (
     create_user,
     get_refresh_token,
@@ -40,8 +40,8 @@ from .utils import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+GOOGLE_CLIENT_ID = settings.google_client_id
+GOOGLE_REDIRECT_URI = settings.google_redirect_uri
 
 
 def _build_auth_response(user: User, access_token: str, refresh_token: str, access_expires: datetime) -> AuthResponse:

@@ -4,7 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import api_router
-from .db import Base, SessionLocal, engine
+from .config import settings
+from .db import Base, engine
 from .migrations import apply_sqlite_migrations
 
 @asynccontextmanager
@@ -14,13 +15,10 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Simplified Chinese Flashcards API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173"
-    ],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]

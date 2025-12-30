@@ -21,6 +21,11 @@ __pycache__/
 # Logs
 *.log
 
+# Env
+.env
+.env.local
+.env.*.local
+
 # Data imports
 data/raw/*
 !data/raw/.gitkeep
