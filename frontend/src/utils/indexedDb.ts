@@ -7,6 +7,13 @@ const STORE_APP = "app";
 const STORE_QUEUE = "queue";
 const STORE_DATASET_META = "dataset_meta";
 const STORE_DATASET_ENTRIES = "dataset_entries";
+const LAST_STUDY_COLLECTION_KEY = (userId?: number) =>
+  `lastStudyCollectionId:${userId ?? "anon"}`;
+
+export type StudyCollectionSelection = {
+  value: number | "all";
+  updated_at: string | null;
+};
 
 type DictSearchMode = "all" | "simplified" | "traditional" | "pinyin" | "meanings";
 type DatasetEntryRecord = {
@@ -192,6 +199,50 @@ export async function clearDatasetEntries(datasetId: string): Promise<void> {
         tx.onerror = () => reject(tx.error);
       })
   );
+}
+
+export async function getLastStudyCollectionSelection(
+  userId?: number
+): Promise<StudyCollectionSelection | null> {
+  const key = LAST_STUDY_COLLECTION_KEY(userId);
+  const result = await withStore<{ key: string; value: unknown } | undefined>(
+    STORE_APP,
+    "readonly",
+    (store) => store.get(key)
+  );
+  if (!result) {
+    return null;
+  }
+
+  if (typeof result.value === "object" && result.value !== null) {
+    const stored = result.value as { value?: unknown; updated_at?: unknown };
+    const value = stored.value;
+    if (value === "all" || typeof value === "number") {
+      return {
+        value,
+        updated_at: typeof stored.updated_at === "string" ? stored.updated_at : null
+      };
+    }
+  }
+
+  if (result.value === "all" || typeof result.value === "number") {
+    return { value: result.value, updated_at: null };
+  }
+
+  return null;
+}
+
+export async function setLastStudyCollectionSelection(
+  selection: StudyCollectionSelection | null,
+  userId?: number
+): Promise<void> {
+  const key = LAST_STUDY_COLLECTION_KEY(userId);
+  await withStore(STORE_APP, "readwrite", (store) => {
+    if (selection === null) {
+      return store.delete(key);
+    }
+    return store.put({ key, value: selection });
+  });
 }
 
 export async function getDownloadedDatasetIds(): Promise<string[]> {

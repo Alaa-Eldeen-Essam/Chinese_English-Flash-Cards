@@ -16,10 +16,11 @@ router = APIRouter(prefix="/study", tags=["study"])
 @router.get("/schedule", response_model=StudyScheduleOut)
 def get_schedule(
     n: int = 20,
+    collection_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> StudyScheduleOut:
-    cards = recommend(db, current_user.id, n=n)
+    cards = recommend(db, current_user.id, n=n, collection_id=collection_id)
     return StudyScheduleOut(
         generated_at=datetime.utcnow(),
         count=len(cards),

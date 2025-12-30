@@ -313,10 +313,13 @@ export async function deleteCard(cardId: number): Promise<{ status: string }> {
   });
 }
 
-export async function getSchedule(params?: { n?: number }): Promise<StudySchedule> {
+export async function getSchedule(params?: { n?: number; collection_id?: number }): Promise<StudySchedule> {
   const url = new URL(`${API_PREFIX}/study/schedule`);
   if (params?.n) {
     url.searchParams.set("n", String(params.n));
+  }
+  if (params?.collection_id !== undefined) {
+    url.searchParams.set("collection_id", String(params.collection_id));
   }
   return request<StudySchedule>(url.toString());
 }
