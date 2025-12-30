@@ -12,6 +12,8 @@ it("renders navigation and status pills", () => {
       isOnline={true}
       queueCount={2}
       loading={false}
+      userName="demo"
+      onLogout={() => undefined}
     />
   );
 

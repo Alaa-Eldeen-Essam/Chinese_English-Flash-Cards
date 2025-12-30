@@ -1,13 +1,7 @@
 import { test, expect } from "@playwright/test";
 
-test("study flow handles offline mode", async ({ page, context }) => {
+test("auth screen renders before login", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("Dashboard")).toBeVisible();
-
-  await page.getByRole("button", { name: "Study" }).click();
-  await expect(page.getByText("Study Session")).toBeVisible();
-
-  await context.setOffline(true);
-  await page.getByRole("button", { name: "Home" }).click();
-  await expect(page.getByText("Offline", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sign in")).toBeVisible();
+  await expect(page.getByText("Create account")).toBeVisible();
 });

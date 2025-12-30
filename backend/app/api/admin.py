@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 
 from ..crud import _dump_list, dump_user_data
 from ..db import get_db
-from ..models import Card, Collection, StudyLog
+from ..models import Card, Collection, StudyLog, User
 from ..schemas import DumpResponse, HealthResponse, SyncRequest, SyncResponse
-from .utils import resolve_user_id
+from .utils import get_current_user
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -18,15 +18,22 @@ def health_check() -> HealthResponse:
 
 
 @router.get("/dump", response_model=DumpResponse)
-def dump_user(user_id: str = "me", db: Session = Depends(get_db)) -> DumpResponse:
-    owner_id = resolve_user_id(db, user_id)
-    payload = dump_user_data(db, owner_id)
+def dump_user(
+    user_id: str = "me",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> DumpResponse:
+    payload = dump_user_data(db, current_user.id)
     return DumpResponse(**payload)
 
 
 @router.post("/sync", response_model=SyncResponse)
-def sync_user(payload: SyncRequest, db: Session = Depends(get_db)) -> SyncResponse:
-    owner_id = resolve_user_id(db, payload.user_id)
+def sync_user(
+    payload: SyncRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> SyncResponse:
+    owner_id = current_user.id
     now = datetime.utcnow()
     id_map: dict = {"collections": {}, "cards": {}}
     received = {"cards": 0, "collections": 0, "study_logs": 0}

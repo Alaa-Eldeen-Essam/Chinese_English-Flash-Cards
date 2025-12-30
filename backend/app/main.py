@@ -4,17 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import api_router
-from .crud import ensure_demo_user
 from .db import Base, SessionLocal, engine
+from .migrations import apply_sqlite_migrations
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        ensure_demo_user(db)
-    finally:
-        db.close()
+    apply_sqlite_migrations(engine)
     yield
 
 

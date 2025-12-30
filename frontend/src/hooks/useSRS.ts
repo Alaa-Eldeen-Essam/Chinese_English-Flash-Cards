@@ -55,8 +55,7 @@ export function useSRS() {
           const response = await submitStudyResponse({
             card_id: card.id,
             q: quality,
-            response_time_ms: responseTimeMs,
-            user_id: "me"
+            response_time_ms: responseTimeMs
           });
 
           const log: StudyLog = {

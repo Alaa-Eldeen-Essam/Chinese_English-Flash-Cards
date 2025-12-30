@@ -6,7 +6,7 @@ from typing import Iterable, List, Optional
 
 from sqlalchemy.orm import Session
 
-from .models import Card, Collection, StudyLog, User, card_collection
+from .models import Card, Collection, RefreshToken, StudyLog, User, card_collection
 from .srs import apply_sm2
 
 
@@ -23,19 +23,80 @@ def _load_list(value: Optional[str]) -> List[str]:
         return [value]
 
 
-def ensure_demo_user(db: Session) -> User:
-    user = db.query(User).filter(User.username == "demo").first()
-    if user:
-        return user
-    user = User(username="demo", hashed_password="demo", settings_json="{}")
+def get_user(db: Session, user_id: int) -> Optional[User]:
+    return db.query(User).filter(User.id == user_id).first()
+
+
+def get_user_by_username(db: Session, username: str) -> Optional[User]:
+    return db.query(User).filter(User.username == username).first()
+
+
+def get_user_by_email(db: Session, email: str) -> Optional[User]:
+    return db.query(User).filter(User.email == email).first()
+
+
+def create_user(
+    db: Session,
+    username: str,
+    hashed_password: str,
+    email: Optional[str] = None,
+    auth_provider: str = "password",
+    oauth_subject: Optional[str] = None
+) -> User:
+    now = datetime.utcnow()
+    user = User(
+        username=username,
+        email=email,
+        hashed_password=hashed_password,
+        auth_provider=auth_provider,
+        oauth_subject=oauth_subject,
+        settings_json="{}",
+        created_at=now,
+        updated_at=now,
+        last_modified=now
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
     return user
 
 
-def get_user(db: Session, user_id: int) -> Optional[User]:
-    return db.query(User).filter(User.id == user_id).first()
+def update_user_settings(db: Session, user: User, settings: dict) -> User:
+    now = datetime.utcnow()
+    user.settings_json = json.dumps(settings or {}, ensure_ascii=False)
+    user.updated_at = now
+    user.last_modified = now
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def store_refresh_token(
+    db: Session,
+    user_id: int,
+    token_hash: str,
+    expires_at: datetime
+) -> RefreshToken:
+    token = RefreshToken(
+        user_id=user_id,
+        token_hash=token_hash,
+        expires_at=expires_at
+    )
+    db.add(token)
+    db.commit()
+    db.refresh(token)
+    return token
+
+
+def get_refresh_token(db: Session, token_hash: str) -> Optional[RefreshToken]:
+    return db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+
+
+def revoke_refresh_token(db: Session, token: RefreshToken) -> RefreshToken:
+    token.revoked_at = datetime.utcnow()
+    db.commit()
+    db.refresh(token)
+    return token
 
 
 def list_collections(db: Session, owner_id: int) -> List[Collection]:

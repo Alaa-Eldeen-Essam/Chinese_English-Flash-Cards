@@ -7,7 +7,8 @@ const NAV_ITEMS: Array<{ id: PageId; label: string }> = [
   { id: "study", label: "Study" },
   { id: "collections", label: "Collections" },
   { id: "card-editor", label: "Card Editor" },
-  { id: "import", label: "Import" }
+  { id: "import", label: "Import" },
+  { id: "account", label: "Account" }
 ];
 
 type NavBarProps = {
@@ -16,6 +17,8 @@ type NavBarProps = {
   isOnline: boolean;
   queueCount: number;
   loading: boolean;
+  userName: string | null;
+  onLogout: () => void;
 };
 
 export default function NavBar({
@@ -23,7 +26,9 @@ export default function NavBar({
   onNavigate,
   isOnline,
   queueCount,
-  loading
+  loading,
+  userName,
+  onLogout
 }: NavBarProps): JSX.Element {
   return (
     <nav className="nav">
@@ -48,11 +53,15 @@ export default function NavBar({
       </div>
 
       <div className="nav-status">
+        {userName && <span className="status-pill">Signed in as {userName}</span>}
         <span className={isOnline ? "status-pill online" : "status-pill offline"}>
           {isOnline ? "Online" : "Offline"}
         </span>
         <span className="status-pill">Queue {queueCount}</span>
         {loading && <span className="status-pill">Syncing</span>}
+        <button className="secondary" onClick={onLogout}>
+          Sign out
+        </button>
       </div>
     </nav>
   );

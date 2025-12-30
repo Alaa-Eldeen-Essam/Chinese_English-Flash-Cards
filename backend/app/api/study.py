@@ -5,21 +5,21 @@ from sqlalchemy.orm import Session
 
 from ..crud import card_to_dict, record_study
 from ..db import get_db
+from ..models import User
 from ..schemas import CardOut, StudyResponseIn, StudyResponseOut, StudyScheduleOut
 from ..scheduler import recommend
-from .utils import resolve_user_id
+from .utils import get_current_user
 
 router = APIRouter(prefix="/study", tags=["study"])
 
 
 @router.get("/schedule", response_model=StudyScheduleOut)
 def get_schedule(
-    user_id: str = "me",
     n: int = 20,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> StudyScheduleOut:
-    owner_id = resolve_user_id(db, user_id)
-    cards = recommend(db, owner_id, n=n)
+    cards = recommend(db, current_user.id, n=n)
     return StudyScheduleOut(
         generated_at=datetime.utcnow(),
         count=len(cards),
@@ -30,13 +30,13 @@ def get_schedule(
 @router.post("/response", response_model=StudyResponseOut)
 def post_response(
     payload: StudyResponseIn,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> StudyResponseOut:
-    owner_id = resolve_user_id(db, payload.user_id)
     try:
         card, log = record_study(
             db,
-            owner_id,
+            current_user.id,
             payload.card_id,
             payload.q,
             payload.response_time_ms

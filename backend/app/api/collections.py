@@ -3,39 +3,39 @@ from sqlalchemy.orm import Session
 
 from ..crud import create_collection, delete_collection, list_collections, update_collection
 from ..db import get_db
-from ..models import Collection
+from ..models import Collection, User
 from ..schemas import CollectionCreate, CollectionOut, CollectionUpdate
-from .utils import resolve_user_id
+from .utils import get_current_user
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
 
 @router.get("/", response_model=list[CollectionOut])
-def get_collections(user_id: str = "me", db: Session = Depends(get_db)) -> list[CollectionOut]:
-    owner_id = resolve_user_id(db, user_id)
-    return list_collections(db, owner_id)
+def get_collections(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> list[CollectionOut]:
+    return list_collections(db, current_user.id)
 
 
 @router.post("/", response_model=CollectionOut)
 def create_collection_endpoint(
     payload: CollectionCreate,
-    user_id: str = "me",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> CollectionOut:
-    owner_id = resolve_user_id(db, user_id)
-    return create_collection(db, owner_id, payload.name, payload.description)
+    return create_collection(db, current_user.id, payload.name, payload.description)
 
 
 @router.put("/{collection_id}", response_model=CollectionOut)
 def update_collection_endpoint(
     collection_id: int,
     payload: CollectionUpdate,
-    user_id: str = "me",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> CollectionOut:
-    owner_id = resolve_user_id(db, user_id)
     collection = db.query(Collection).filter(
-        Collection.owner_id == owner_id,
+        Collection.owner_id == current_user.id,
         Collection.id == collection_id
     ).first()
     if not collection:
@@ -47,12 +47,11 @@ def update_collection_endpoint(
 @router.delete("/{collection_id}")
 def delete_collection_endpoint(
     collection_id: int,
-    user_id: str = "me",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> dict:
-    owner_id = resolve_user_id(db, user_id)
     collection = db.query(Collection).filter(
-        Collection.owner_id == owner_id,
+        Collection.owner_id == current_user.id,
         Collection.id == collection_id
     ).first()
     if not collection:

@@ -52,6 +52,51 @@ body::before {
   padding: 32px 24px 64px;
 }
 
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+
+.auth-panel {
+  width: min(520px, 100%);
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 32px;
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  animation: fadeUp 0.6s ease both;
+}
+
+.auth-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.auth-header h1 {
+  margin: 0 0 6px;
+  font-size: 26px;
+}
+
+.auth-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.auth-footer {
+  margin-top: 18px;
+}
+
 .nav {
   display: grid;
   grid-template-columns: 1.4fr 2fr 1fr;

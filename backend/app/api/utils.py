@@ -1,27 +1,37 @@
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError
 from sqlalchemy.orm import Session
 
-from ..crud import ensure_demo_user, get_user
+from ..crud import get_user
+from ..db import get_db
+from ..models import User
+from ..security import decode_token, token_subject
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
-def resolve_user_id(db: Session, user_id: str | int) -> int:
-    if isinstance(user_id, int):
-        if get_user(db, user_id):
-            return user_id
-        demo = ensure_demo_user(db)
-        return demo.id
-
-    if user_id == "me":
-        demo = ensure_demo_user(db)
-        return demo.id
-
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+) -> User:
     try:
-        parsed = int(user_id)
-    except ValueError:
-        demo = ensure_demo_user(db)
-        return demo.id
+        payload = decode_token(token)
+        if payload.get("type") != "access":
+            raise JWTError("Invalid token type")
+        user_id = token_subject(payload)
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"}
+        ) from exc
 
-    if get_user(db, parsed):
-        return parsed
-
-    demo = ensure_demo_user(db)
-    return demo.id
+    user = get_user(db, user_id)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Inactive or missing user",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    return user

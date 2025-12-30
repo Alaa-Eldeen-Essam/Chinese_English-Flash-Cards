@@ -86,7 +86,6 @@ export function useOfflineSync(): OfflineSyncState {
         .map((item) => item.payload as StudyLog);
 
       const response = await syncUserData({
-        user_id: "me",
         cards,
         collections,
         study_logs: studyLogs,

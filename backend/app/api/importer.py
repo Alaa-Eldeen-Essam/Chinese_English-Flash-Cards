@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Up
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..models import User
 from ..schemas import (
     ImportJobResponse,
     ImportStatusResponse,
@@ -20,12 +21,17 @@ from ..services.import_jobs import (
     run_job
 )
 from ..services.importer import CsvMapping
+from .utils import get_current_user
 
 router = APIRouter(prefix="/admin/import", tags=["admin-import"])
 
 
 @router.post("/upload", response_model=ImportUploadResponse)
-def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)) -> ImportUploadResponse:
+def upload_file(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> ImportUploadResponse:
     root_dir = Path(__file__).resolve().parents[3]
     raw_dir = root_dir / "data" / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -51,7 +57,8 @@ def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)) -> 
 def trigger_import(
     payload: ImportTriggerRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> ImportJobResponse:
     uploaded = get_import_file(db, payload.file_id)
     if not uploaded:
@@ -76,7 +83,11 @@ def trigger_import(
 
 
 @router.get("/status/{job_id}", response_model=ImportStatusResponse)
-def get_status(job_id: str, db: Session = Depends(get_db)) -> ImportStatusResponse:
+def get_status(
+    job_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> ImportStatusResponse:
     job = get_import_job(db, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")

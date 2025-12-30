@@ -8,6 +8,49 @@ class HealthResponse(BaseModel):
     status: str
 
 
+class AuthRegisterRequest(BaseModel):
+    username: str
+    password: str
+    email: str | None = None
+
+
+class AuthLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AuthUser(BaseModel):
+    id: int
+    username: str
+    email: str | None = None
+    settings: dict
+    auth_provider: str
+
+
+class AuthToken(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+class AuthResponse(BaseModel):
+    user: AuthUser
+    token: AuthToken
+
+
+class AuthRefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class AuthLogoutRequest(BaseModel):
+    refresh_token: str
+
+
+class UserSettingsUpdate(BaseModel):
+    settings: dict
+
+
 class CollectionCreate(BaseModel):
     name: str
     description: str = ""

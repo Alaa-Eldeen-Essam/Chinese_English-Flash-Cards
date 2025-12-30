@@ -1,5 +1,25 @@
 export type ReviewRating = 0 | 1 | 2 | 3 | 4 | 5;
 
+export type AuthUser = {
+  id: number;
+  username: string;
+  email?: string | null;
+  settings: Record<string, unknown>;
+  auth_provider: string;
+};
+
+export type AuthToken = {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+};
+
+export type AuthResponse = {
+  user: AuthUser;
+  token: AuthToken;
+};
+
 export type Collection = {
   id: number;
   owner_id: number;

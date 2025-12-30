@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from ..crud import card_to_dict, create_card, delete_card, list_cards, update_card
 from ..db import get_db
 from ..schemas import CardCreate, CardOut, CardUpdate
-from ..models import Card
-from .utils import resolve_user_id
+from ..models import Card, User
+from .utils import get_current_user
 
 router = APIRouter(prefix="/cards", tags=["cards"])
 
@@ -14,24 +14,22 @@ router = APIRouter(prefix="/cards", tags=["cards"])
 def search_cards(
     collection: int | None = None,
     query: str | None = None,
-    user_id: str = "me",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> list[CardOut]:
-    owner_id = resolve_user_id(db, user_id)
-    cards = list_cards(db, owner_id, collection_id=collection, query=query)
+    cards = list_cards(db, current_user.id, collection_id=collection, query=query)
     return [CardOut(**card_to_dict(card)) for card in cards]
 
 
 @router.post("/", response_model=CardOut)
 def create_card_endpoint(
     payload: CardCreate,
-    user_id: str = "me",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> CardOut:
-    owner_id = resolve_user_id(db, user_id)
     card = create_card(
         db,
-        owner_id,
+        current_user.id,
         payload.simplified,
         payload.pinyin,
         payload.meanings,
@@ -47,12 +45,11 @@ def create_card_endpoint(
 def update_card_endpoint(
     card_id: int,
     payload: CardUpdate,
-    user_id: str = "me",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> CardOut:
-    owner_id = resolve_user_id(db, user_id)
     card = db.query(Card).filter(
-        Card.owner_id == owner_id,
+        Card.owner_id == current_user.id,
         Card.id == card_id
     ).first()
     if not card:
@@ -73,12 +70,11 @@ def update_card_endpoint(
 @router.delete("/{card_id}")
 def delete_card_endpoint(
     card_id: int,
-    user_id: str = "me",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> dict:
-    owner_id = resolve_user_id(db, user_id)
     card = db.query(Card).filter(
-        Card.owner_id == owner_id,
+        Card.owner_id == current_user.id,
         Card.id == card_id
     ).first()
     if not card:

@@ -22,6 +22,7 @@ function TestComponent() {
 }
 
 it("hydrates from API when online", async () => {
+  localStorage.clear();
   vi.stubGlobal(
     "fetch",
     vi.fn(() =>
