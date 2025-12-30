@@ -92,13 +92,13 @@ export function useOfflineSync(): OfflineSyncState {
         last_modified: userData.last_modified
       });
 
-      const cardMap = response.id_map?.cards ?? {};
-      const collectionMap = response.id_map?.collections ?? {};
-      if (Object.keys(cardMap).length > 0 || Object.keys(collectionMap).length > 0) {
+      const cardIdMap = response.id_map?.cards ?? {};
+      const collectionIdMap = response.id_map?.collections ?? {};
+      if (Object.keys(cardIdMap).length > 0 || Object.keys(collectionIdMap).length > 0) {
         const remapCollectionId = (id: number) =>
-          collectionMap[String(id)] ?? id;
+          collectionIdMap[String(id)] ?? id;
         const remapCardId = (id: number) =>
-          cardMap[String(id)] ?? id;
+          cardIdMap[String(id)] ?? id;
 
         const updatedCollections = userData.collections.map((collection) => ({
           ...collection,

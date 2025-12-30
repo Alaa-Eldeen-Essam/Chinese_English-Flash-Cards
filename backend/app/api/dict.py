@@ -109,14 +109,14 @@ def search_dict(
 
     base_from = "FROM dict_word d"
     if use_fts:
-        base_from += " JOIN dict_word_fts fts ON d.id = fts.rowid"
+        base_from += " JOIN dict_word_fts ON d.id = dict_word_fts.rowid"
 
     where_clauses: list[str] = []
     params: dict = {"limit": limit, "offset": offset}
 
     if query:
         if use_fts:
-            where_clauses.append("fts MATCH :match")
+            where_clauses.append("dict_word_fts MATCH :match")
             params["match"] = match
             if mode == "pinyin":
                 normalized = normalize_pinyin_search(query)
