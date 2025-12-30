@@ -79,3 +79,15 @@ class StudyLog(Base):
 
     card = relationship("Card", back_populates="study_logs")
     user = relationship("User", back_populates="study_logs")
+
+
+class DictWord(Base):
+    __tablename__ = "dict_word"
+
+    id = Column(Integer, primary_key=True, index=True)
+    simplified = Column(String, nullable=False)
+    traditional = Column(String, nullable=True)
+    pinyin = Column(String, nullable=True)
+    meanings = Column(Text, nullable=True)
+    examples = Column(Text, nullable=True)
+    tags = Column(Text, nullable=True)

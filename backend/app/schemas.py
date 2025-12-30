@@ -84,3 +84,34 @@ class SyncRequest(BaseModel):
 class SyncResponse(BaseModel):
     status: str
     received: dict
+
+
+class ImportUploadResponse(BaseModel):
+    file_id: str
+    filename: str
+    path: str
+    size: int
+
+
+class ImportTriggerRequest(BaseModel):
+    file_id: str
+    file_type: str = Field(default="cedict", pattern="^(cedict|csv)$")
+    csv_mapping: dict | None = None
+    pinyin_style: str = Field(default="numbers", pattern="^(numbers|diacritics|none)$")
+    dedupe: bool = True
+    replace: bool = False
+
+
+class ImportJobResponse(BaseModel):
+    job_id: str
+    status: str
+
+
+class ImportStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    progress: int
+    logs: list
+    stats: dict | None = None
+    created_at: datetime
+    finished_at: datetime | None = None

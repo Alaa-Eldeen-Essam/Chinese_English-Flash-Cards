@@ -25,3 +25,7 @@ __pycache__/
 data/raw/*
 !data/raw/.gitkeep
 data/cedict_import.json
+
+# Frontend test artifacts
+frontend/playwright-report/
+frontend/test-results/

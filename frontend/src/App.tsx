@@ -1,58 +1,52 @@
-import React, { useEffect, useState } from "react";
-import Flashcard from "./components/Flashcard";
-import { FlashcardProvider, useFlashcards } from "./state/flashcards";
-import { healthCheck } from "./api/client";
+import React, { useMemo, useState } from "react";
 
-function AppContent(): JSX.Element {
-  const { currentCard, remainingCount, reviewCard, resetSession } = useFlashcards();
-  const [apiStatus, setApiStatus] = useState("Checking backend...");
+import NavBar from "./components/NavBar";
+import Home from "./pages/Home";
+import Study from "./pages/Study";
+import Collections from "./pages/Collections";
+import CardEditor from "./pages/CardEditor";
+import Import from "./pages/Import";
+import type { PageId } from "./pages/pageTypes";
+import { AppStoreProvider, useAppStore } from "./store/AppStore";
 
-  useEffect(() => {
-    let mounted = true;
+function AppLayout(): JSX.Element {
+  const [page, setPage] = useState<PageId>("home");
+  const { isOnline, queue, loading } = useAppStore();
 
-    healthCheck()
-      .then(() => {
-        if (mounted) {
-          setApiStatus("Backend online");
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setApiStatus("Offline mode: using local data");
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  const content = useMemo(() => {
+    switch (page) {
+      case "study":
+        return <Study />;
+      case "collections":
+        return <Collections />;
+      case "card-editor":
+        return <CardEditor />;
+      case "import":
+        return <Import />;
+      case "home":
+      default:
+        return <Home onNavigate={setPage} />;
+    }
+  }, [page]);
 
   return (
-    <div className="app">
-      <header className="header">
-        <h1>Simplified Chinese Flashcards</h1>
-        <div className="status">{apiStatus}</div>
-        <div className="status">{remainingCount} cards due</div>
-      </header>
-
-      <div className="card-shell">
-        {currentCard ? (
-          <Flashcard card={currentCard} onRate={reviewCard} />
-        ) : (
-          <div className="empty">
-            <p>No cards due right now. Nice work!</p>
-            <button onClick={resetSession}>Reset demo session</button>
-          </div>
-        )}
-      </div>
+    <div className="app-shell">
+      <NavBar
+        active={page}
+        onNavigate={setPage}
+        isOnline={isOnline}
+        queueCount={queue.length}
+        loading={loading}
+      />
+      <main className="main">{content}</main>
     </div>
   );
 }
 
 export default function App(): JSX.Element {
   return (
-    <FlashcardProvider>
-      <AppContent />
-    </FlashcardProvider>
+    <AppStoreProvider>
+      <AppLayout />
+    </AppStoreProvider>
   );
 }
