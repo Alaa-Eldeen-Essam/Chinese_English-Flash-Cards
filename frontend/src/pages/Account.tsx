@@ -7,6 +7,7 @@ export default function Account(): JSX.Element {
   const [dailyGoal, setDailyGoal] = useState(20);
   const [toneColors, setToneColors] = useState(true);
   const [autoTts, setAutoTts] = useState(false);
+  const [studyMode, setStudyMode] = useState("standard");
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -18,6 +19,12 @@ export default function Account(): JSX.Element {
     setDailyGoal(Number.isFinite(storedGoal) ? storedGoal : 20);
     setToneColors(settings["tone_colors"] !== false);
     setAutoTts(settings["auto_tts"] === true);
+    const preferred = settings["study_mode"];
+    if (preferred === "typing" || preferred === "listening" || preferred === "cloze") {
+      setStudyMode(preferred);
+    } else {
+      setStudyMode("standard");
+    }
   }, [user]);
 
   if (!user) {
@@ -36,7 +43,8 @@ export default function Account(): JSX.Element {
         ...user.settings,
         daily_goal: dailyGoal,
         tone_colors: toneColors,
-        auto_tts: autoTts
+        auto_tts: autoTts,
+        study_mode: studyMode
       });
       setStatus("Settings saved");
     } catch (error) {
@@ -95,6 +103,15 @@ export default function Account(): JSX.Element {
               onChange={(event) => setAutoTts(event.target.checked)}
             />
             Auto-play audio for each new card
+          </label>
+          <label>
+            Default study mode
+            <select value={studyMode} onChange={(event) => setStudyMode(event.target.value)}>
+              <option value="standard">Standard</option>
+              <option value="typing">Typing</option>
+              <option value="listening">Listening</option>
+              <option value="cloze">Cloze</option>
+            </select>
           </label>
 
           {status && <div className="status-pill">{status}</div>}

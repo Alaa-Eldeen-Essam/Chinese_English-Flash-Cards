@@ -31,6 +31,34 @@ const TONE_MARKS: Record<string, number> = {
   "ü": 0
 };
 
+const DIACRITIC_BASE: Record<string, string> = {
+  "ā": "a",
+  "á": "a",
+  "ǎ": "a",
+  "à": "a",
+  "ē": "e",
+  "é": "e",
+  "ě": "e",
+  "è": "e",
+  "ī": "i",
+  "í": "i",
+  "ǐ": "i",
+  "ì": "i",
+  "ō": "o",
+  "ó": "o",
+  "ǒ": "o",
+  "ò": "o",
+  "ū": "u",
+  "ú": "u",
+  "ǔ": "u",
+  "ù": "u",
+  "ǖ": "v",
+  "ǘ": "v",
+  "ǚ": "v",
+  "ǜ": "v",
+  "ü": "v"
+};
+
 function detectTone(token: string): number {
   const numberMatch = token.match(/[1-5]/);
   if (numberMatch) {
@@ -53,4 +81,19 @@ export function splitPinyin(pinyin: string): ToneInfo[] {
     text: part,
     tone: part.trim() ? detectTone(part) : 0
   }));
+}
+
+export function normalizePinyinInput(pinyin: string): string {
+  if (!pinyin.trim()) {
+    return "";
+  }
+  const lowered = pinyin.toLowerCase();
+  const mapped = lowered
+    .split("")
+    .map((char) => DIACRITIC_BASE[char] ?? char)
+    .join("");
+  return mapped
+    .replace(/[1-5]/g, "")
+    .replace(/u:/g, "v")
+    .replace(/\s+/g, "");
 }

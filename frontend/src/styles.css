@@ -301,6 +301,13 @@ body::before {
   font-size: 14px;
 }
 
+.study-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
 .study-card {
   display: grid;
   gap: 20px;
@@ -353,6 +360,11 @@ body::before {
 
 .listen-button {
   margin-top: 16px;
+}
+
+.answer-block {
+  display: grid;
+  gap: 8px;
 }
 
 .example-line {
@@ -538,6 +550,56 @@ textarea {
   min-height: 12px;
   border-radius: 10px;
   background: linear-gradient(180deg, #f3b26e, var(--accent));
+  transition: height 0.3s ease;
+}
+
+.metric-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.metric-bar {
+  position: relative;
+  height: 10px;
+  background: #f2ece3;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.metric-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f3b26e, var(--accent));
+}
+
+.response-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  align-items: end;
+  margin-top: 16px;
+  min-height: 140px;
+}
+
+.response-cell {
+  display: grid;
+  gap: 4px;
+  text-align: center;
+  align-items: end;
+}
+
+.response-bar {
+  width: 100%;
+  min-height: 8px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #b8d7ff, #4c7ac9);
   transition: height 0.3s ease;
 }
 

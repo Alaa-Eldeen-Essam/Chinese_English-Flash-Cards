@@ -3,7 +3,13 @@ import React, { useMemo } from "react";
 import StatCard from "../components/StatCard";
 import type { PageId } from "./pageTypes";
 import { useAppStore } from "../store/AppStore";
-import { computeStreak, getDailyReviewCounts, getWeakCards } from "../utils/stats";
+import {
+  computeStreak,
+  getAccuracyByTagPrefix,
+  getAvgResponseTimes,
+  getDailyReviewCounts,
+  getWeakCards
+} from "../utils/stats";
 
 function isDue(dueAt: string): boolean {
   return new Date(dueAt).getTime() <= Date.now();
@@ -43,6 +49,9 @@ export default function Home({ onNavigate }: HomeProps): JSX.Element {
   const streak = computeStreak(userData.study_logs);
   const reviewCounts = getDailyReviewCounts(userData.study_logs, 7);
   const weakCards = getWeakCards(userData.cards, userData.study_logs, 5);
+  const accuracyByHsk = getAccuracyByTagPrefix(userData.cards, userData.study_logs, "HSK", 4);
+  const accuracyByPos = getAccuracyByTagPrefix(userData.cards, userData.study_logs, "pos:", 4);
+  const responseTimes = getAvgResponseTimes(userData.study_logs, 7);
 
   return (
     <section className="page">
@@ -130,6 +139,58 @@ export default function Home({ onNavigate }: HomeProps): JSX.Element {
               ))}
             </ul>
           )}
+        </div>
+      </div>
+
+      <div className="panel-grid">
+        <div className="panel">
+          <h2>Accuracy by HSK</h2>
+          {accuracyByHsk.length === 0 ? (
+            <p className="muted">No tagged reviews yet.</p>
+          ) : (
+            <div className="metric-list">
+              {accuracyByHsk.map((row) => (
+                <div key={row.label} className="metric-row">
+                  <span>{row.label}</span>
+                  <div className="metric-bar">
+                    <div className="metric-bar-fill" style={{ width: `${row.accuracy}%` }} />
+                  </div>
+                  <span className="muted">{row.accuracy}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="panel">
+          <h2>Accuracy by POS</h2>
+          {accuracyByPos.length === 0 ? (
+            <p className="muted">No part-of-speech tags yet.</p>
+          ) : (
+            <div className="metric-list">
+              {accuracyByPos.map((row) => (
+                <div key={row.label} className="metric-row">
+                  <span>{row.label.replace("pos:", "")}</span>
+                  <div className="metric-bar">
+                    <div className="metric-bar-fill" style={{ width: `${row.accuracy}%` }} />
+                  </div>
+                  <span className="muted">{row.accuracy}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="panel">
+        <h2>Response time trend</h2>
+        <div className="response-grid">
+          {responseTimes.map((day) => (
+            <div key={day.date} className="response-cell">
+              <div className="response-bar" style={{ height: `${Math.min(100, day.ms / 30)}px` }} />
+              <span className="muted">{day.label}</span>
+              <span className="muted">{day.ms} ms</span>
+            </div>
+          ))}
         </div>
       </div>
 

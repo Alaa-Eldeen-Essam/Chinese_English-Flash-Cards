@@ -1,5 +1,7 @@
 export type ReviewRating = 0 | 1 | 2 | 3 | 4 | 5;
 
+export type StudyMode = "standard" | "typing" | "listening" | "cloze";
+
 export type AuthUser = {
   id: number;
   username: string;

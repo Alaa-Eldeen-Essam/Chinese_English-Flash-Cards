@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import StudyCard from "../components/StudyCard";
 import { getSchedule } from "../api/client";
-import type { Card } from "../types";
+import type { Card, StudyMode } from "../types";
 import { useAppStore } from "../store/AppStore";
 import { useSRS } from "../hooks/useSRS";
+import { useAuthStore } from "../store/AuthStore";
 
 function isDue(card: Card): boolean {
   return new Date(card.next_due).getTime() <= Date.now();
@@ -13,10 +14,22 @@ function isDue(card: Card): boolean {
 export default function Study(): JSX.Element {
   const { userData, isOnline } = useAppStore();
   const { recordReview } = useSRS();
+  const { user } = useAuthStore();
   const [queue, setQueue] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState(Date.now());
+  const [mode, setMode] = useState<StudyMode>("standard");
+
+  useEffect(() => {
+    const settings = user?.settings ?? {};
+    const preferred = settings["study_mode"];
+    if (preferred === "typing" || preferred === "listening" || preferred === "cloze") {
+      setMode(preferred);
+    } else {
+      setMode("standard");
+    }
+  }, [user]);
 
   const fallbackQueue = useMemo(() => {
     return [...userData.cards]
@@ -84,6 +97,15 @@ export default function Study(): JSX.Element {
         <div className="inline-meta">
           <span>Queue: {queue.length}</span>
           <span>Mode: {isOnline ? "Online" : "Offline"}</span>
+          <label className="study-mode">
+            Study mode
+            <select value={mode} onChange={(event) => setMode(event.target.value as StudyMode)}>
+              <option value="standard">Standard</option>
+              <option value="typing">Typing</option>
+              <option value="listening">Listening</option>
+              <option value="cloze">Cloze</option>
+            </select>
+          </label>
         </div>
       </header>
 
@@ -92,7 +114,7 @@ export default function Study(): JSX.Element {
       ) : currentCard ? (
         <div className="panel">
           {error && <p className="muted">{error}</p>}
-          <StudyCard card={currentCard} onRate={handleRate} />
+          <StudyCard card={currentCard} onRate={handleRate} mode={mode} />
         </div>
       ) : (
         <div className="panel empty">
