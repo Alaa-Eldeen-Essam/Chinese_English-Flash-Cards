@@ -20,6 +20,12 @@ class CollectionOut(BaseModel):
     owner_id: int
     name: str
     description: str
+    last_modified: datetime
+
+
+class CollectionUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
 
 
 class CardCreate(BaseModel):
@@ -45,6 +51,17 @@ class CardOut(BaseModel):
     interval_days: int
     repetitions: int
     next_due: datetime
+    collection_ids: List[int] = Field(default_factory=list)
+    last_modified: datetime
+
+
+class CardUpdate(BaseModel):
+    simplified: str | None = None
+    pinyin: str | None = None
+    meanings: List[str] | None = None
+    examples: List[str] | None = None
+    tags: List[str] | None = None
+    collection_ids: List[int] | None = None
 
 
 class StudyScheduleOut(BaseModel):
@@ -73,17 +90,52 @@ class DumpResponse(BaseModel):
     last_modified: datetime
 
 
+class CollectionSync(BaseModel):
+    id: int
+    name: str
+    description: str = ""
+    last_modified: datetime
+
+
+class CardSync(BaseModel):
+    id: int
+    simplified: str
+    pinyin: str = ""
+    meanings: List[str] = Field(default_factory=list)
+    examples: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
+    created_from_dict_id: Optional[int] = None
+    collection_ids: List[int] = Field(default_factory=list)
+    easiness: float = 2.5
+    interval_days: int = 0
+    repetitions: int = 0
+    next_due: datetime
+    last_modified: datetime
+
+
+class StudyLogSync(BaseModel):
+    id: int
+    card_id: int
+    user_id: int
+    timestamp: datetime
+    ease: int
+    correct: bool
+    response_time_ms: int
+    last_modified: datetime
+
+
 class SyncRequest(BaseModel):
     user_id: str = "me"
-    cards: list = Field(default_factory=list)
-    collections: list = Field(default_factory=list)
-    study_logs: list = Field(default_factory=list)
+    cards: List[CardSync] = Field(default_factory=list)
+    collections: List[CollectionSync] = Field(default_factory=list)
+    study_logs: List[StudyLogSync] = Field(default_factory=list)
     last_modified: Optional[datetime] = None
 
 
 class SyncResponse(BaseModel):
     status: str
     received: dict
+    id_map: dict = Field(default_factory=dict)
 
 
 class ImportUploadResponse(BaseModel):

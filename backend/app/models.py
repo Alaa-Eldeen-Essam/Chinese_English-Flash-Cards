@@ -21,6 +21,7 @@ class User(Base):
     settings_json = Column(Text, default="{}")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
+    last_modified = Column(DateTime, default=datetime.utcnow)
 
     collections = relationship("Collection", back_populates="owner")
     cards = relationship("Card", back_populates="owner")
@@ -36,6 +37,7 @@ class Collection(Base):
     description = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
+    last_modified = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="collections")
     cards = relationship("Card", secondary=card_collection, back_populates="collections")
@@ -60,6 +62,7 @@ class Card(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
+    last_modified = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="cards")
     collections = relationship("Collection", secondary=card_collection, back_populates="cards")
@@ -76,6 +79,7 @@ class StudyLog(Base):
     ease = Column(Integer, nullable=False)
     correct = Column(Boolean, default=False)
     response_time_ms = Column(Integer, default=0)
+    last_modified = Column(DateTime, default=datetime.utcnow)
 
     card = relationship("Card", back_populates="study_logs")
     user = relationship("User", back_populates="study_logs")
@@ -91,3 +95,45 @@ class DictWord(Base):
     meanings = Column(Text, nullable=True)
     examples = Column(Text, nullable=True)
     tags = Column(Text, nullable=True)
+    last_modified = Column(DateTime, default=datetime.utcnow)
+
+
+class ImportFile(Base):
+    __tablename__ = "import_files"
+
+    id = Column(String, primary_key=True, index=True)
+    filename = Column(String, nullable=False)
+    path = Column(String, nullable=False)
+    size = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ImportJob(Base):
+    __tablename__ = "import_jobs"
+
+    id = Column(String, primary_key=True, index=True)
+    file_id = Column(String, ForeignKey("import_files.id"), nullable=False)
+    file_type = Column(String, nullable=False)
+    mapping_json = Column(Text, nullable=True)
+    pinyin_style = Column(String, default="numbers")
+    dedupe = Column(Boolean, default=True)
+    replace = Column(Boolean, default=False)
+    status = Column(String, default="queued")
+    progress = Column(Integer, default=0)
+    stats_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    finished_at = Column(DateTime, nullable=True)
+
+    logs = relationship("ImportJobLog", back_populates="job")
+
+
+class ImportJobLog(Base):
+    __tablename__ = "import_job_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(String, ForeignKey("import_jobs.id"), nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    level = Column(String, default="info")
+    message = Column(Text, nullable=False)
+
+    job = relationship("ImportJob", back_populates="logs")

@@ -55,11 +55,13 @@ export default function Collections(): JSX.Element {
       }
     }
 
+    const now = new Date().toISOString();
     const local = {
       id: createLocalId(),
       owner_id: userData.user.id,
       name,
-      description
+      description,
+      last_modified: now
     };
     updateUserData({
       ...userData,

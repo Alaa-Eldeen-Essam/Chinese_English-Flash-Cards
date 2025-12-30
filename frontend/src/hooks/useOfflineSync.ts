@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { fetchUserDump, syncUserData } from "../api/client";
-import type { SyncQueueItem, UserData } from "../types";
+import type { Card, Collection, StudyLog, SyncQueueItem, UserData } from "../types";
 import { createEmptyUserData } from "../utils/data";
 import { clearQueue, enqueue, getQueue, getUserData, setUserData } from "../utils/indexedDb";
 
@@ -60,20 +60,79 @@ export function useOfflineSync(): OfflineSyncState {
       return;
     }
     try {
-      await syncUserData({
+      const cardMap = new Map<number, Card>();
+      const collectionMap = new Map<number, Collection>();
+
+      queue
+        .filter((item) => item.type === "create_card" || item.type === "update_card")
+        .forEach((item) => {
+          const card = item.payload as Card;
+          cardMap.set(card.id, card);
+        });
+
+      queue
+        .filter(
+          (item) => item.type === "create_collection" || item.type === "update_collection"
+        )
+        .forEach((item) => {
+          const collection = item.payload as Collection;
+          collectionMap.set(collection.id, collection);
+        });
+
+      const cards = Array.from(cardMap.values());
+      const collections = Array.from(collectionMap.values());
+      const studyLogs = queue
+        .filter((item) => item.type === "study")
+        .map((item) => item.payload as StudyLog);
+
+      const response = await syncUserData({
         user_id: "me",
-        cards: [],
-        collections: [],
-        study_logs: queue,
+        cards,
+        collections,
+        study_logs: studyLogs,
         last_modified: userData.last_modified
       });
+
+      const cardMap = response.id_map?.cards ?? {};
+      const collectionMap = response.id_map?.collections ?? {};
+      if (Object.keys(cardMap).length > 0 || Object.keys(collectionMap).length > 0) {
+        const remapCollectionId = (id: number) =>
+          collectionMap[String(id)] ?? id;
+        const remapCardId = (id: number) =>
+          cardMap[String(id)] ?? id;
+
+        const updatedCollections = userData.collections.map((collection) => ({
+          ...collection,
+          id: remapCollectionId(collection.id)
+        }));
+
+        const updatedCards = userData.cards.map((card) => ({
+          ...card,
+          id: remapCardId(card.id),
+          collection_ids: (card.collection_ids ?? []).map(remapCollectionId)
+        }));
+
+        const updatedLogs = userData.study_logs.map((log) => ({
+          ...log,
+          card_id: remapCardId(log.card_id)
+        }));
+
+        updateUserData({
+          ...userData,
+          collections: updatedCollections,
+          cards: updatedCards,
+          study_logs: updatedLogs,
+          last_modified: new Date().toISOString()
+        });
+      }
+
       await clearQueue(queue.map((item) => item.id));
       setQueueState([]);
       setLastSyncAt(new Date().toISOString());
     } catch {
       // Leave queue intact for next attempt.
     }
-  }, [isOnline, queue, userData.last_modified]);
+  }, [isOnline, queue, updateUserData, userData]);
 
   useEffect(() => {
     hydrateFromStorage()

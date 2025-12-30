@@ -5,6 +5,7 @@ export type Collection = {
   owner_id: number;
   name: string;
   description: string;
+  last_modified: string;
 };
 
 export type Card = {
@@ -20,6 +21,8 @@ export type Card = {
   interval_days: number;
   repetitions: number;
   next_due: string;
+  collection_ids?: number[];
+  last_modified: string;
 };
 
 export type StudyLog = {
@@ -30,6 +33,7 @@ export type StudyLog = {
   ease: number;
   correct: boolean;
   response_time_ms: number;
+  last_modified: string;
 };
 
 export type UserData = {
@@ -57,7 +61,7 @@ export type StudyResponse = {
 
 export type SyncQueueItem = {
   id: string;
-  type: "study" | "create_card" | "create_collection";
+  type: "study" | "create_card" | "update_card" | "create_collection" | "update_collection";
   payload: unknown;
   created_at: string;
 };

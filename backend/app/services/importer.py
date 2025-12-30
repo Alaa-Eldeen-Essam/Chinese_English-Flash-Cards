@@ -4,6 +4,7 @@ import csv
 import gzip
 import json
 import re
+from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, List, Optional
@@ -291,7 +292,8 @@ def insert_dict_entries(db: Session, entries: Iterable[DictEntry], replace: bool
             pinyin=entry.pinyin,
             meanings=json.dumps(entry.meanings, ensure_ascii=False),
             examples=json.dumps(entry.examples, ensure_ascii=False),
-            tags=json.dumps(entry.tags, ensure_ascii=False)
+            tags=json.dumps(entry.tags, ensure_ascii=False),
+            last_modified=datetime.utcnow()
         )
         for entry in entries
     ]

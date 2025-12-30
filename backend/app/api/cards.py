@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ..crud import card_to_dict, create_card, list_cards
+from ..crud import card_to_dict, create_card, delete_card, list_cards, update_card
 from ..db import get_db
-from ..schemas import CardCreate, CardOut
+from ..schemas import CardCreate, CardOut, CardUpdate
+from ..models import Card
 from .utils import resolve_user_id
 
 router = APIRouter(prefix="/cards", tags=["cards"])
@@ -40,3 +41,47 @@ def create_card_endpoint(
         payload.collection_ids
     )
     return CardOut(**card_to_dict(card))
+
+
+@router.put("/{card_id}", response_model=CardOut)
+def update_card_endpoint(
+    card_id: int,
+    payload: CardUpdate,
+    user_id: str = "me",
+    db: Session = Depends(get_db)
+) -> CardOut:
+    owner_id = resolve_user_id(db, user_id)
+    card = db.query(Card).filter(
+        Card.owner_id == owner_id,
+        Card.id == card_id
+    ).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    updated = update_card(
+        db,
+        card,
+        simplified=payload.simplified,
+        pinyin=payload.pinyin,
+        meanings=payload.meanings,
+        examples=payload.examples,
+        tags=payload.tags,
+        collection_ids=payload.collection_ids
+    )
+    return CardOut(**card_to_dict(updated))
+
+
+@router.delete("/{card_id}")
+def delete_card_endpoint(
+    card_id: int,
+    user_id: str = "me",
+    db: Session = Depends(get_db)
+) -> dict:
+    owner_id = resolve_user_id(db, user_id)
+    card = db.query(Card).filter(
+        Card.owner_id == owner_id,
+        Card.id == card_id
+    ).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    delete_card(db, card)
+    return {"status": "deleted"}

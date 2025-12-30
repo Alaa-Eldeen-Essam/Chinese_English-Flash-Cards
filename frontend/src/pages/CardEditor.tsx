@@ -70,6 +70,7 @@ export default function CardEditor(): JSX.Element {
       }
     }
 
+    const now = new Date().toISOString();
     const localCard: Card = {
       id: createLocalCardId(),
       owner_id: userData.user.id,
@@ -81,7 +82,9 @@ export default function CardEditor(): JSX.Element {
       easiness: 2.5,
       interval_days: 0,
       repetitions: 0,
-      next_due: new Date().toISOString()
+      next_due: now,
+      collection_ids: [],
+      last_modified: now
     };
 
     updateUserData({

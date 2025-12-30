@@ -23,4 +23,5 @@ def apply_sm2(card: Card, quality: int, now: datetime | None = None) -> Card:
     card.easiness = max(1.3, card.easiness + delta)
     card.next_due = now + timedelta(days=card.interval_days)
     card.updated_at = now
+    card.last_modified = now
     return card

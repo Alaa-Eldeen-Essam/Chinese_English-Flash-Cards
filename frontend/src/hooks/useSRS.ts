@@ -39,7 +39,8 @@ function applySm2(card: Card, quality: number, now: Date): Card {
     repetitions,
     interval_days: intervalDays,
     easiness,
-    next_due: dueAt.toISOString()
+    next_due: dueAt.toISOString(),
+    last_modified: now.toISOString()
   };
 }
 
@@ -65,7 +66,8 @@ export function useSRS() {
             timestamp: response.logged_at,
             ease: quality,
             correct: quality >= 3,
-            response_time_ms: responseTimeMs
+            response_time_ms: responseTimeMs,
+            last_modified: new Date().toISOString()
           };
 
           const updated = {
@@ -90,7 +92,8 @@ export function useSRS() {
         timestamp: now.toISOString(),
         ease: quality,
         correct: quality >= 3,
-        response_time_ms: responseTimeMs
+        response_time_ms: responseTimeMs,
+        last_modified: now.toISOString()
       };
 
       const updated = {
@@ -105,11 +108,14 @@ export function useSRS() {
       await enqueueAction({
         id: createId(),
         type: "study",
-        payload: {
-          card_id: card.id,
-          q: quality,
-          response_time_ms: responseTimeMs
-        },
+        payload: log,
+        created_at: now.toISOString()
+      });
+
+      await enqueueAction({
+        id: createId(),
+        type: "update_card",
+        payload: updatedCard,
         created_at: now.toISOString()
       });
 

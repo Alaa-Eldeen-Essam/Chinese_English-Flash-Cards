@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
@@ -10,7 +11,14 @@ from ..schemas import (
     ImportTriggerRequest,
     ImportUploadResponse
 )
-from ..services.import_jobs import create_job, get_file, get_job, register_file, run_job
+from ..services.import_jobs import (
+    create_import_file,
+    create_import_job,
+    get_import_file,
+    get_import_job,
+    get_import_logs,
+    run_job
+)
 from ..services.importer import CsvMapping
 
 router = APIRouter(prefix="/admin/import", tags=["admin-import"])
@@ -18,7 +26,6 @@ router = APIRouter(prefix="/admin/import", tags=["admin-import"])
 
 @router.post("/upload", response_model=ImportUploadResponse)
 def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)) -> ImportUploadResponse:
-    _ = db
     root_dir = Path(__file__).resolve().parents[3]
     raw_dir = root_dir / "data" / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -31,7 +38,7 @@ def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)) -> 
     content = file.file.read()
     dest.write_bytes(content)
 
-    uploaded = register_file(dest, file.filename, size=len(content))
+    uploaded = create_import_file(db, dest, file.filename, size=len(content))
     return ImportUploadResponse(
         file_id=uploaded.id,
         filename=uploaded.filename,
@@ -43,9 +50,10 @@ def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)) -> 
 @router.post("/trigger", response_model=ImportJobResponse)
 def trigger_import(
     payload: ImportTriggerRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
 ) -> ImportJobResponse:
-    uploaded = get_file(payload.file_id)
+    uploaded = get_import_file(db, payload.file_id)
     if not uploaded:
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -53,8 +61,9 @@ def trigger_import(
     if payload.file_type == "csv" and payload.csv_mapping:
         mapping = CsvMapping(**payload.csv_mapping)
 
-    job = create_job(
-        file_path=uploaded.path,
+    job = create_import_job(
+        db,
+        file_id=uploaded.id,
         file_type=payload.file_type,
         mapping=mapping,
         pinyin_style=payload.pinyin_style,
@@ -67,25 +76,19 @@ def trigger_import(
 
 
 @router.get("/status/{job_id}", response_model=ImportStatusResponse)
-def get_status(job_id: str) -> ImportStatusResponse:
-    job = get_job(job_id)
+def get_status(job_id: str, db: Session = Depends(get_db)) -> ImportStatusResponse:
+    job = get_import_job(db, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    stats = None
-    if job.stats:
-        stats = {
-            "parsed": job.stats.parsed,
-            "normalized": job.stats.normalized,
-            "deduped": job.stats.deduped,
-            "inserted": job.stats.inserted
-        }
+    logs = get_import_logs(db, job_id)
+    stats = json.loads(job.stats_json) if job.stats_json else None
 
     return ImportStatusResponse(
         job_id=job.id,
         status=job.status,
         progress=job.progress,
-        logs=job.logs,
+        logs=[{"timestamp": log.timestamp.isoformat(), "level": log.level, "message": log.message} for log in logs],
         stats=stats,
         created_at=job.created_at,
         finished_at=job.finished_at

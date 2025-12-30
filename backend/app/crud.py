@@ -43,11 +43,41 @@ def list_collections(db: Session, owner_id: int) -> List[Collection]:
 
 
 def create_collection(db: Session, owner_id: int, name: str, description: str) -> Collection:
-    collection = Collection(owner_id=owner_id, name=name, description=description)
+    now = datetime.utcnow()
+    collection = Collection(
+        owner_id=owner_id,
+        name=name,
+        description=description,
+        updated_at=now,
+        last_modified=now
+    )
     db.add(collection)
     db.commit()
     db.refresh(collection)
     return collection
+
+
+def update_collection(
+    db: Session,
+    collection: Collection,
+    name: Optional[str],
+    description: Optional[str]
+) -> Collection:
+    now = datetime.utcnow()
+    if name is not None:
+        collection.name = name
+    if description is not None:
+        collection.description = description
+    collection.updated_at = now
+    collection.last_modified = now
+    db.commit()
+    db.refresh(collection)
+    return collection
+
+
+def delete_collection(db: Session, collection: Collection) -> None:
+    db.delete(collection)
+    db.commit()
 
 
 def create_card(
@@ -71,7 +101,8 @@ def create_card(
         tags_json=_dump_list(tags),
         created_from_dict_id=created_from_dict_id,
         next_due=now,
-        updated_at=now
+        updated_at=now,
+        last_modified=now
     )
     db.add(card)
     db.commit()
@@ -90,6 +121,49 @@ def create_card(
         db.refresh(card)
 
     return card
+
+
+def update_card(
+    db: Session,
+    card: Card,
+    simplified: Optional[str] = None,
+    pinyin: Optional[str] = None,
+    meanings: Optional[Iterable[str]] = None,
+    examples: Optional[Iterable[str]] = None,
+    tags: Optional[Iterable[str]] = None,
+    collection_ids: Optional[Iterable[int]] = None
+) -> Card:
+    now = datetime.utcnow()
+    if simplified is not None:
+        card.simplified = simplified
+    if pinyin is not None:
+        card.pinyin = pinyin
+    if meanings is not None:
+        card.meanings_json = _dump_list(meanings)
+    if examples is not None:
+        card.examples_json = _dump_list(examples)
+    if tags is not None:
+        card.tags_json = _dump_list(tags)
+
+    if collection_ids is not None:
+        collections = (
+            db.query(Collection)
+            .filter(Collection.owner_id == card.owner_id)
+            .filter(Collection.id.in_(list(collection_ids)))
+            .all()
+        )
+        card.collections = collections
+
+    card.updated_at = now
+    card.last_modified = now
+    db.commit()
+    db.refresh(card)
+    return card
+
+
+def delete_card(db: Session, card: Card) -> None:
+    db.delete(card)
+    db.commit()
 
 
 def list_cards(
@@ -124,7 +198,8 @@ def record_study(
         user_id=user_id,
         ease=quality,
         correct=quality >= 3,
-        response_time_ms=response_time_ms
+        response_time_ms=response_time_ms,
+        last_modified=datetime.utcnow()
     )
     db.add(log)
     db.commit()
@@ -146,7 +221,9 @@ def card_to_dict(card: Card) -> dict:
         "easiness": card.easiness,
         "interval_days": card.interval_days,
         "repetitions": card.repetitions,
-        "next_due": card.next_due
+        "next_due": card.next_due,
+        "collection_ids": [collection.id for collection in card.collections],
+        "last_modified": card.last_modified
     }
 
 
@@ -159,16 +236,16 @@ def dump_user_data(db: Session, user_id: int) -> dict:
     cards = list_cards(db, user_id)
     study_logs = db.query(StudyLog).filter(StudyLog.user_id == user_id).all()
 
-    last_modified = user.updated_at
+    last_modified = user.last_modified
     for collection in collections:
-        if collection.updated_at and collection.updated_at > last_modified:
-            last_modified = collection.updated_at
+        if collection.last_modified and collection.last_modified > last_modified:
+            last_modified = collection.last_modified
     for card in cards:
-        if card.updated_at and card.updated_at > last_modified:
-            last_modified = card.updated_at
+        if card.last_modified and card.last_modified > last_modified:
+            last_modified = card.last_modified
     for log in study_logs:
-        if log.timestamp and log.timestamp > last_modified:
-            last_modified = log.timestamp
+        if log.last_modified and log.last_modified > last_modified:
+            last_modified = log.last_modified
 
     return {
         "user": {
@@ -181,7 +258,8 @@ def dump_user_data(db: Session, user_id: int) -> dict:
                 "id": collection.id,
                 "owner_id": collection.owner_id,
                 "name": collection.name,
-                "description": collection.description
+                "description": collection.description,
+                "last_modified": collection.last_modified
             }
             for collection in collections
         ],
@@ -194,7 +272,8 @@ def dump_user_data(db: Session, user_id: int) -> dict:
                 "timestamp": log.timestamp,
                 "ease": log.ease,
                 "correct": log.correct,
-                "response_time_ms": log.response_time_ms
+                "response_time_ms": log.response_time_ms,
+                "last_modified": log.last_modified
             }
             for log in study_logs
         ],

@@ -2,9 +2,9 @@ import type {
   Card,
   Collection,
   ImportJob,
+  StudyLog,
   StudyResponse,
   StudySchedule,
-  SyncQueueItem,
   UserData
 } from "../types";
 
@@ -34,9 +34,9 @@ export async function syncUserData(payload: {
   user_id?: string;
   cards: Card[];
   collections: Collection[];
-  study_logs: SyncQueueItem[];
+  study_logs: StudyLog[];
   last_modified?: string | null;
-}): Promise<{ status: string; received: Record<string, number> }> {
+}): Promise<{ status: string; received: Record<string, number>; id_map?: Record<string, Record<string, number>> }> {
   return request(`${API_PREFIX}/admin/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -60,6 +60,31 @@ export async function createCollection(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
+  });
+}
+
+export async function updateCollection(
+  collectionId: number,
+  payload: { name?: string; description?: string },
+  userId = "me"
+): Promise<Collection> {
+  const url = new URL(`${API_PREFIX}/collections/${collectionId}`);
+  url.searchParams.set("user_id", userId);
+  return request<Collection>(url.toString(), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteCollection(
+  collectionId: number,
+  userId = "me"
+): Promise<{ status: string }> {
+  const url = new URL(`${API_PREFIX}/collections/${collectionId}`);
+  url.searchParams.set("user_id", userId);
+  return request<{ status: string }>(url.toString(), {
+    method: "DELETE"
   });
 }
 
@@ -97,6 +122,38 @@ export async function createCard(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
+  });
+}
+
+export async function updateCard(
+  cardId: number,
+  payload: {
+    simplified?: string;
+    pinyin?: string;
+    meanings?: string[];
+    examples?: string[];
+    tags?: string[];
+    collection_ids?: number[];
+  },
+  userId = "me"
+): Promise<Card> {
+  const url = new URL(`${API_PREFIX}/cards/${cardId}`);
+  url.searchParams.set("user_id", userId);
+  return request<Card>(url.toString(), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteCard(
+  cardId: number,
+  userId = "me"
+): Promise<{ status: string }> {
+  const url = new URL(`${API_PREFIX}/cards/${cardId}`);
+  url.searchParams.set("user_id", userId);
+  return request<{ status: string }>(url.toString(), {
+    method: "DELETE"
   });
 }
 
