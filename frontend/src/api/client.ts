@@ -6,6 +6,7 @@ import type {
   DatasetInfo,
   DatasetPack,
   DatasetSelection,
+  DictSearchResponse,
   ImportJob,
   StudyLog,
   StudyResponse,
@@ -174,6 +175,42 @@ export async function fetchDatasetPack(
   url.searchParams.set("offset", String(offset));
   url.searchParams.set("limit", String(limit));
   return request<DatasetPack>(url.toString());
+}
+
+export async function searchDictionary(params: {
+  query: string;
+  mode?: "all" | "simplified" | "traditional" | "pinyin" | "meanings";
+  hsk?: string;
+  pos?: string;
+  freq_min?: number;
+  freq_max?: number;
+  limit?: number;
+  offset?: number;
+}): Promise<DictSearchResponse> {
+  const url = new URL(`${API_PREFIX}/dict/search`);
+  url.searchParams.set("query", params.query);
+  if (params.mode) {
+    url.searchParams.set("mode", params.mode);
+  }
+  if (params.hsk) {
+    url.searchParams.set("hsk", params.hsk);
+  }
+  if (params.pos) {
+    url.searchParams.set("pos", params.pos);
+  }
+  if (params.freq_min !== undefined) {
+    url.searchParams.set("freq_min", String(params.freq_min));
+  }
+  if (params.freq_max !== undefined) {
+    url.searchParams.set("freq_max", String(params.freq_max));
+  }
+  if (params.limit !== undefined) {
+    url.searchParams.set("limit", String(params.limit));
+  }
+  if (params.offset !== undefined) {
+    url.searchParams.set("offset", String(params.offset));
+  }
+  return request<DictSearchResponse>(url.toString());
 }
 
 export async function syncUserData(payload: {

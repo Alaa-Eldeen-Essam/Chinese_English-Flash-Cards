@@ -36,6 +36,17 @@ export type DictWord = {
   frequency?: number | null;
 };
 
+export type DictFacetCounts = {
+  hsk: Record<string, number>;
+  pos: Record<string, number>;
+};
+
+export type DictSearchResponse = {
+  total: number;
+  results: DictWord[];
+  facets: DictFacetCounts;
+};
+
 export type DatasetInfo = {
   id: string;
   name: string;

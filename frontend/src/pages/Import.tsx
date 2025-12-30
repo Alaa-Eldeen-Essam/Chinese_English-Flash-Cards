@@ -60,6 +60,13 @@ export default function Import(): JSX.Element {
   const [replace, setReplace] = useState(false);
   const [job, setJob] = useState<ImportJob | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const hasDownloadedDatasets = useMemo(
+    () =>
+      Object.values(downloadState).some(
+        (meta) => meta.status === "done" && meta.downloaded > 0
+      ),
+    [downloadState]
+  );
 
   useEffect(() => {
     let active = true;
@@ -342,6 +349,16 @@ export default function Import(): JSX.Element {
           <p>
             Grab CC-CEDICT plus HSK levels to unlock dictionary search and smart
             deck building.
+          </p>
+        </div>
+      )}
+
+      {!hasDownloadedDatasets && (
+        <div className="panel callout">
+          <h2>Dictionary search tips</h2>
+          <p>
+            For full dictionary coverage, download CC-CEDICT. HSK-only packs are
+            smaller but limited to their level lists.
           </p>
         </div>
       )}

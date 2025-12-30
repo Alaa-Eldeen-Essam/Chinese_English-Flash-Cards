@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
-import { createCard } from "../api/client";
-import type { Card } from "../types";
+import { createCard, searchDictionary } from "../api/client";
+import type { Card, DictWord } from "../types";
 import { useAppStore } from "../store/AppStore";
+import { getDownloadedDatasetIds, searchDatasetEntries } from "../utils/indexedDb";
 
 function createLocalCardId(): number {
   return -Math.floor(Date.now() / 1000);
@@ -15,7 +16,17 @@ export default function CardEditor(): JSX.Element {
   const [meanings, setMeanings] = useState("");
   const [tags, setTags] = useState("");
   const [query, setQuery] = useState("");
+  const [dictMode, setDictMode] = useState<
+    "all" | "simplified" | "traditional" | "pinyin" | "meanings"
+  >("all");
+  const [dictResults, setDictResults] = useState<DictWord[]>([]);
+  const [dictStatus, setDictStatus] = useState<string | null>(null);
+  const [dictLoading, setDictLoading] = useState(false);
+  const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [selectedCollections, setSelectedCollections] = useState<number[]>([]);
+  const [sourceDictId, setSourceDictId] = useState<number | null>(null);
+  const [downloadedDatasets, setDownloadedDatasets] = useState<string[]>([]);
 
   const suggestions = useMemo(() => {
     if (!query.trim()) {
@@ -29,11 +40,34 @@ export default function CardEditor(): JSX.Element {
       .slice(0, 5);
   }, [query, userData.cards]);
 
+  const existingDictIds = useMemo(() => {
+    const ids = new Set<number>();
+    userData.cards.forEach((card) => {
+      if (card.created_from_dict_id) {
+        ids.add(card.created_from_dict_id);
+      }
+    });
+    return ids;
+  }, [userData.cards]);
+
+  const existingSimplified = useMemo(() => {
+    return new Set(userData.cards.map((card) => card.simplified));
+  }, [userData.cards]);
+
   function applySuggestion(card: Card) {
     setSimplified(card.simplified);
     setPinyin(card.pinyin);
     setMeanings(card.meanings.join("; "));
     setTags(card.tags.join(", "));
+    setSourceDictId(null);
+  }
+
+  function applyDictEntry(entry: DictWord) {
+    setSimplified(entry.simplified);
+    setPinyin(entry.pinyin ?? "");
+    setMeanings(entry.meanings.join("; "));
+    setTags(entry.tags.join(", "));
+    setSourceDictId(entry.id);
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -47,7 +81,9 @@ export default function CardEditor(): JSX.Element {
       pinyin,
       meanings: meanings.split(";").map((item) => item.trim()).filter(Boolean),
       tags: tags.split(",").map((item) => item.trim()).filter(Boolean),
-      examples: [] as string[]
+      examples: [] as string[],
+      created_from_dict_id: sourceDictId,
+      collection_ids: selectedCollections
     };
 
     setStatus(null);
@@ -64,6 +100,7 @@ export default function CardEditor(): JSX.Element {
         setPinyin("");
         setMeanings("");
         setTags("");
+        setSourceDictId(null);
         return;
       } catch (error) {
         setStatus("Create failed, using offline draft");
@@ -79,11 +116,12 @@ export default function CardEditor(): JSX.Element {
       meanings: payload.meanings,
       examples: [],
       tags: payload.tags,
+      created_from_dict_id: sourceDictId,
       easiness: 2.5,
       interval_days: 0,
       repetitions: 0,
       next_due: now,
-      collection_ids: [],
+      collection_ids: selectedCollections,
       last_modified: now
     };
 
@@ -104,7 +142,146 @@ export default function CardEditor(): JSX.Element {
     setPinyin("");
     setMeanings("");
     setTags("");
+    setSourceDictId(null);
   }
+
+  function toggleCollection(collectionId: number) {
+    setSelectedCollections((prev) =>
+      prev.includes(collectionId)
+        ? prev.filter((id) => id !== collectionId)
+        : [...prev, collectionId]
+    );
+  }
+
+  async function handleAddFromDict(entry: DictWord) {
+    setActionStatus(null);
+    const payload = {
+      simplified: entry.simplified,
+      pinyin: entry.pinyin ?? "",
+      meanings: entry.meanings,
+      examples: entry.examples,
+      tags: entry.tags,
+      created_from_dict_id: entry.id,
+      collection_ids: selectedCollections
+    };
+
+    if (isOnline) {
+      try {
+        const created = await createCard(payload);
+        updateUserData({
+          ...userData,
+          cards: [...userData.cards, created],
+          last_modified: new Date().toISOString()
+        });
+        setActionStatus("Card added.");
+        return;
+      } catch {
+        setActionStatus("Create failed, queued offline.");
+      }
+    }
+
+    const now = new Date().toISOString();
+    const localCard: Card = {
+      id: createLocalCardId(),
+      owner_id: userData.user.id,
+      simplified: payload.simplified,
+      pinyin: payload.pinyin ?? "",
+      meanings: payload.meanings ?? [],
+      examples: payload.examples ?? [],
+      tags: payload.tags ?? [],
+      created_from_dict_id: entry.id,
+      easiness: 2.5,
+      interval_days: 0,
+      repetitions: 0,
+      next_due: now,
+      collection_ids: selectedCollections,
+      last_modified: now
+    };
+
+    updateUserData({
+      ...userData,
+      cards: [...userData.cards, localCard],
+      last_modified: new Date().toISOString()
+    });
+
+    await enqueueAction({
+      id: `${Date.now()}-card`,
+      type: "create_card",
+      payload: localCard,
+      created_at: new Date().toISOString()
+    });
+  }
+
+  useEffect(() => {
+    let active = true;
+
+    const timer = window.setTimeout(async () => {
+      const trimmed = query.trim();
+      if (!trimmed) {
+        if (active) {
+          setDictResults([]);
+          setDictStatus(null);
+        }
+        return;
+      }
+
+      setDictLoading(true);
+      setDictStatus(null);
+      try {
+        if (isOnline) {
+          const response = await searchDictionary({
+            query: trimmed,
+            mode: dictMode,
+            limit: 12
+          });
+          if (!active) {
+            return;
+          }
+          setDictResults(response.results);
+          if (response.results.length === 0) {
+            setDictStatus("No dictionary matches yet.");
+          }
+          return;
+        }
+
+        const datasetIds = await getDownloadedDatasetIds();
+        if (!active) {
+          return;
+        }
+        setDownloadedDatasets(datasetIds);
+        if (datasetIds.length === 0) {
+          setDictResults([]);
+          setDictStatus("Download a dataset for offline dictionary search.");
+          return;
+        }
+        const results = await searchDatasetEntries(trimmed, {
+          mode: dictMode,
+          datasetIds,
+          limit: 12
+        });
+        if (!active) {
+          return;
+        }
+        setDictResults(results);
+        if (results.length === 0) {
+          setDictStatus("No matches in downloaded datasets.");
+        }
+      } catch {
+        if (active) {
+          setDictStatus("Dictionary search failed.");
+        }
+      } finally {
+        if (active) {
+          setDictLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [dictMode, isOnline, query]);
 
   return (
     <section className="page">
@@ -135,6 +312,32 @@ export default function CardEditor(): JSX.Element {
               Tags (comma-separated)
               <input value={tags} onChange={(event) => setTags(event.target.value)} />
             </label>
+            <div>
+              <span className="muted">Collections</span>
+              {userData.collections.length === 0 ? (
+                <p className="muted">Create a collection to organize new cards.</p>
+              ) : (
+                <ul className="list selectable">
+                  {userData.collections.map((collection) => (
+                    <li key={collection.id}>
+                      <label className="checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedCollections.includes(collection.id)}
+                          onChange={() => toggleCollection(collection.id)}
+                        />
+                        <div>
+                          <div>{collection.name}</div>
+                          <div className="muted">
+                            {collection.description || "No description"}
+                          </div>
+                        </div>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <button className="primary" type="submit">
               Save card
             </button>
@@ -145,25 +348,91 @@ export default function CardEditor(): JSX.Element {
         <div className="panel">
           <h2>Dictionary lookup</h2>
           <p className="muted">
-            Search your local data for now. Hook this to the imported dictionary later.
+            Search the dictionary to populate new cards or add them directly to collections.
           </p>
-          <input
-            placeholder="Search simplified or pinyin"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          {suggestions.length > 0 ? (
+          <div className="inline-meta">
+            <input
+              placeholder="Search simplified, pinyin, or meaning"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <select
+              value={dictMode}
+              onChange={(event) =>
+                setDictMode(
+                  event.target.value as
+                    | "all"
+                    | "simplified"
+                    | "traditional"
+                    | "pinyin"
+                    | "meanings"
+                )
+              }
+            >
+              <option value="all">All</option>
+              <option value="simplified">Simplified</option>
+              <option value="traditional">Traditional</option>
+              <option value="pinyin">Pinyin</option>
+              <option value="meanings">Meanings</option>
+            </select>
+          </div>
+
+          {suggestions.length > 0 && (
+            <>
+              <h3>Your cards</h3>
+              <ul className="list selectable">
+                {suggestions.map((card) => (
+                  <li key={card.id} onClick={() => applySuggestion(card)}>
+                    <span>{card.simplified}</span>
+                    <span className="muted">{card.pinyin}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {dictLoading && <p className="muted">Searching dictionary...</p>}
+          {dictResults.length > 0 ? (
             <ul className="list selectable">
-              {suggestions.map((card) => (
-                <li key={card.id} onClick={() => applySuggestion(card)}>
-                  <span>{card.simplified}</span>
-                  <span className="muted">{card.pinyin}</span>
-                </li>
-              ))}
+              {dictResults.map((entry) => {
+                const alreadyAdded =
+                  existingDictIds.has(entry.id) || existingSimplified.has(entry.simplified);
+                return (
+                  <li key={entry.id}>
+                    <div className="inline-meta">
+                      <span>{entry.simplified}</span>
+                      <span className="muted">{entry.pinyin}</span>
+                      {entry.hsk_level && <span className="muted">HSK {entry.hsk_level}</span>}
+                    </div>
+                    <div className="muted">{entry.meanings.join("; ")}</div>
+                    <div className="inline-meta">
+                      <button
+                        className="secondary"
+                        type="button"
+                        onClick={() => applyDictEntry(entry)}
+                      >
+                        Use in form
+                      </button>
+                      <button
+                        className="primary"
+                        type="button"
+                        disabled={alreadyAdded}
+                        onClick={() => handleAddFromDict(entry)}
+                      >
+                        {alreadyAdded ? "Added" : "Add to collections"}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
-            <p className="muted">No matches yet. Import dictionary data to expand.</p>
+            !dictLoading && dictStatus && <p className="muted">{dictStatus}</p>
           )}
+          {!isOnline && downloadedDatasets.length === 0 && !dictStatus && (
+            <p className="muted">Download a dataset to enable offline search.</p>
+          )}
+          {actionStatus && <p className="muted">{actionStatus}</p>}
         </div>
       </div>
     </section>
