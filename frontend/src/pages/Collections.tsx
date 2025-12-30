@@ -1,12 +1,30 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-import { createCard, createCollection, searchCards, searchDictionary } from "../api/client";
+import { createCard, createCollection, searchCards, searchDictionary, updateCard } from "../api/client";
 import type { Card, Collection, DictWord } from "../types";
 import { useAppStore } from "../store/AppStore";
 import { getDownloadedDatasetIds, searchDatasetEntries } from "../utils/indexedDb";
 
 function createLocalId(): number {
   return -Math.floor(Date.now() / 1000);
+}
+
+function mergeCards(online: Card[], local: Card[]): Card[] {
+  const merged = new Map<number, Card>();
+  online.forEach((card) => merged.set(card.id, card));
+  local.forEach((card) => {
+    const existing = merged.get(card.id);
+    if (!existing) {
+      merged.set(card.id, card);
+      return;
+    }
+    const localTime = Date.parse(card.last_modified);
+    const existingTime = Date.parse(existing.last_modified);
+    if (!Number.isNaN(localTime) && localTime > existingTime) {
+      merged.set(card.id, card);
+    }
+  });
+  return Array.from(merged.values());
 }
 
 export default function Collections(): JSX.Element {
@@ -46,6 +64,13 @@ export default function Collections(): JSX.Element {
     return userData.cards.filter((card) => card.collection_ids?.includes(selected.id));
   }, [selected, userData.cards]);
 
+  const mergedCards = useMemo(() => {
+    if (!selected) {
+      return [];
+    }
+    return mergeCards(cards, offlineCards);
+  }, [cards, offlineCards, selected]);
+
   useEffect(() => {
     let active = true;
 
@@ -71,11 +96,10 @@ export default function Collections(): JSX.Element {
           if (!active) {
             return;
           }
-          setDictResults(response.results);
-          if (response.results.length === 0) {
-            setDictStatus("No dictionary matches.");
+          if (response.results.length > 0) {
+            setDictResults(response.results);
+            return;
           }
-          return;
         }
 
         const datasetIds = await getDownloadedDatasetIds();
@@ -170,6 +194,59 @@ export default function Collections(): JSX.Element {
       return;
     }
     setActionStatus(null);
+    const existingCard =
+      userData.cards.find((card) => card.created_from_dict_id === entry.id) ??
+      userData.cards.find((card) => card.simplified === entry.simplified);
+    const now = new Date().toISOString();
+
+    if (existingCard) {
+      const existingCollections = existingCard.collection_ids ?? [];
+      if (existingCollections.includes(selected.id)) {
+        setActionStatus("Already in this collection.");
+        return;
+      }
+      const nextCollections = Array.from(new Set([...existingCollections, selected.id]));
+
+      if (existingCard.id > 0 && isOnline) {
+        try {
+          const updated = await updateCard(existingCard.id, {
+            collection_ids: nextCollections
+          });
+          updateUserData({
+            ...userData,
+            cards: userData.cards.map((card) => (card.id === updated.id ? updated : card)),
+            last_modified: now
+          });
+          setCards((prev) => mergeCards(prev, [updated]));
+          setActionStatus("Added to collection.");
+          return;
+        } catch {
+          setActionStatus("Update failed, using offline draft");
+        }
+      }
+
+      const offlineUpdated: Card = {
+        ...existingCard,
+        collection_ids: nextCollections,
+        last_modified: now
+      };
+      updateUserData({
+        ...userData,
+        cards: userData.cards.map((card) =>
+          card.id === offlineUpdated.id ? offlineUpdated : card
+        ),
+        last_modified: now
+      });
+      await enqueueAction({
+        id: `${Date.now()}-card-update`,
+        type: "update_card",
+        payload: offlineUpdated,
+        created_at: now
+      });
+      setActionStatus("Added to collection offline.");
+      return;
+    }
+
     const payload = {
       simplified: entry.simplified,
       pinyin: entry.pinyin ?? "",
@@ -188,14 +265,13 @@ export default function Collections(): JSX.Element {
           cards: [...userData.cards, created],
           last_modified: new Date().toISOString()
         });
-        setCards((prev) => [...prev, created]);
+        setCards((prev) => mergeCards(prev, [created]));
         return;
       } catch (error) {
         setActionStatus("Create failed, using offline draft");
       }
     }
 
-    const now = new Date().toISOString();
     const localCard: Card = {
       id: createLocalId(),
       owner_id: userData.user.id,
@@ -337,7 +413,7 @@ export default function Collections(): JSX.Element {
         {selected && !isOnline && offlineCards.length === 0 && (
           <p className="muted">No offline cards in this collection yet.</p>
         )}
-        {selected && isOnline && cards.length === 0 && (
+        {selected && isOnline && mergedCards.length === 0 && (
           <p className="muted">No cards in this collection yet.</p>
         )}
         {selected && !isOnline && offlineCards.length > 0 && (
@@ -350,9 +426,9 @@ export default function Collections(): JSX.Element {
             ))}
           </ul>
         )}
-        {selected && isOnline && cards.length > 0 && (
+        {selected && isOnline && mergedCards.length > 0 && (
           <ul className="list">
-            {cards.map((card) => (
+            {mergedCards.map((card) => (
               <li key={card.id}>
                 <span>{card.simplified}</span>
                 <span className="muted">{card.pinyin}</span>

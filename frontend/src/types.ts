@@ -143,7 +143,13 @@ export type StudyResponse = {
 
 export type SyncQueueItem = {
   id: string;
-  type: "study" | "create_card" | "update_card" | "create_collection" | "update_collection";
+  type:
+    | "study"
+    | "create_card"
+    | "update_card"
+    | "create_collection"
+    | "update_collection"
+    | "dataset_selection";
   payload: unknown;
   created_at: string;
 };

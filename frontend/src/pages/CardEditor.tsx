@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-import { createCard, searchDictionary } from "../api/client";
+import { createCard, searchDictionary, updateCard } from "../api/client";
 import type { Card, DictWord } from "../types";
 import { useAppStore } from "../store/AppStore";
 import { getDownloadedDatasetIds, searchDatasetEntries } from "../utils/indexedDb";
@@ -40,18 +40,22 @@ export default function CardEditor(): JSX.Element {
       .slice(0, 5);
   }, [query, userData.cards]);
 
-  const existingDictIds = useMemo(() => {
-    const ids = new Set<number>();
+  const cardByDictId = useMemo(() => {
+    const map = new Map<number, Card>();
     userData.cards.forEach((card) => {
       if (card.created_from_dict_id) {
-        ids.add(card.created_from_dict_id);
+        map.set(card.created_from_dict_id, card);
       }
     });
-    return ids;
+    return map;
   }, [userData.cards]);
 
-  const existingSimplified = useMemo(() => {
-    return new Set(userData.cards.map((card) => card.simplified));
+  const cardBySimplified = useMemo(() => {
+    const map = new Map<string, Card>();
+    userData.cards.forEach((card) => {
+      map.set(card.simplified, card);
+    });
+    return map;
   }, [userData.cards]);
 
   function applySuggestion(card: Card) {
@@ -153,8 +157,57 @@ export default function CardEditor(): JSX.Element {
     );
   }
 
-  async function handleAddFromDict(entry: DictWord) {
+  async function handleAddFromDict(entry: DictWord, existingCard?: Card) {
     setActionStatus(null);
+    const now = new Date().toISOString();
+    if (existingCard) {
+      const nextCollectionIds = Array.from(
+        new Set([...(existingCard.collection_ids ?? []), ...selectedCollections])
+      );
+      const sameCollections =
+        nextCollectionIds.length === (existingCard.collection_ids ?? []).length;
+      if (sameCollections) {
+        setActionStatus("Already in selected collection(s).");
+        return;
+      }
+
+      if (isOnline) {
+        try {
+          const updated = await updateCard(existingCard.id, {
+            collection_ids: nextCollectionIds
+          });
+          updateUserData({
+            ...userData,
+            cards: userData.cards.map((card) => (card.id === updated.id ? updated : card)),
+            last_modified: now
+          });
+          setActionStatus("Collections updated.");
+          return;
+        } catch {
+          setActionStatus("Update failed, queued offline.");
+        }
+      }
+
+      const offlineUpdated: Card = {
+        ...existingCard,
+        collection_ids: nextCollectionIds,
+        last_modified: now
+      };
+      updateUserData({
+        ...userData,
+        cards: userData.cards.map((card) => (card.id === offlineUpdated.id ? offlineUpdated : card)),
+        last_modified: now
+      });
+      await enqueueAction({
+        id: `${Date.now()}-card-update`,
+        type: "update_card",
+        payload: offlineUpdated,
+        created_at: now
+      });
+      setActionStatus("Collections updated offline.");
+      return;
+    }
+
     const payload = {
       simplified: entry.simplified,
       pinyin: entry.pinyin ?? "",
@@ -180,7 +233,6 @@ export default function CardEditor(): JSX.Element {
       }
     }
 
-    const now = new Date().toISOString();
     const localCard: Card = {
       id: createLocalCardId(),
       owner_id: userData.user.id,
@@ -237,11 +289,10 @@ export default function CardEditor(): JSX.Element {
           if (!active) {
             return;
           }
-          setDictResults(response.results);
-          if (response.results.length === 0) {
-            setDictStatus("No dictionary matches yet.");
+          if (response.results.length > 0) {
+            setDictResults(response.results);
+            return;
           }
-          return;
         }
 
         const datasetIds = await getDownloadedDatasetIds();
@@ -395,8 +446,19 @@ export default function CardEditor(): JSX.Element {
           {dictResults.length > 0 ? (
             <ul className="list selectable">
               {dictResults.map((entry) => {
-                const alreadyAdded =
-                  existingDictIds.has(entry.id) || existingSimplified.has(entry.simplified);
+                const existingCard =
+                  cardByDictId.get(entry.id) ?? cardBySimplified.get(entry.simplified);
+                const existingCollections = existingCard?.collection_ids ?? [];
+                const missingCollections = selectedCollections.filter(
+                  (id) => !existingCollections.includes(id)
+                );
+                const canAddToCollections =
+                  !existingCard || missingCollections.length > 0;
+                const actionLabel = existingCard
+                  ? canAddToCollections
+                    ? "Add to collections"
+                    : "Already added"
+                  : "Add to collections";
                 return (
                   <li key={entry.id}>
                     <div className="inline-meta">
@@ -416,10 +478,10 @@ export default function CardEditor(): JSX.Element {
                       <button
                         className="primary"
                         type="button"
-                        disabled={alreadyAdded}
-                        onClick={() => handleAddFromDict(entry)}
+                        disabled={!canAddToCollections}
+                        onClick={() => handleAddFromDict(entry, existingCard)}
                       >
-                        {alreadyAdded ? "Added" : "Add to collections"}
+                        {actionLabel}
                       </button>
                     </div>
                   </li>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { fetchUserDump, syncUserData } from "../api/client";
+import { fetchUserDump, syncUserData, updateDatasetSelection } from "../api/client";
 import type { Card, Collection, StudyLog, SyncQueueItem, UserData } from "../types";
 import { createEmptyUserData } from "../utils/data";
 import { clearQueue, enqueue, getQueue, getUserData, setUserData } from "../utils/indexedDb";
@@ -59,18 +59,44 @@ export function useOfflineSync(): OfflineSyncState {
     if (!isOnline || queue.length === 0) {
       return;
     }
+    const processedIds = new Set<string>();
+
+    const datasetSelectionItems = queue.filter((item) => item.type === "dataset_selection");
+    if (datasetSelectionItems.length > 0) {
+      const latestSelection = datasetSelectionItems.reduce((latest, current) =>
+        current.created_at > latest.created_at ? current : latest
+      );
+      const payload = latestSelection.payload as { selected?: string[] };
+      const selected = Array.isArray(payload?.selected) ? payload.selected : [];
+      try {
+        await updateDatasetSelection(selected);
+        datasetSelectionItems.forEach((item) => processedIds.add(item.id));
+      } catch {
+        // Keep dataset selection items for next sync attempt.
+      }
+    }
+
+    const syncItems = queue.filter((item) => item.type !== "dataset_selection");
+    if (syncItems.length === 0) {
+      if (processedIds.size > 0) {
+        await clearQueue([...processedIds]);
+        setQueueState((prev) => prev.filter((item) => !processedIds.has(item.id)));
+      }
+      return;
+    }
+
     try {
       const cardMap = new Map<number, Card>();
       const collectionMap = new Map<number, Collection>();
 
-      queue
+      syncItems
         .filter((item) => item.type === "create_card" || item.type === "update_card")
         .forEach((item) => {
           const card = item.payload as Card;
           cardMap.set(card.id, card);
         });
 
-      queue
+      syncItems
         .filter(
           (item) => item.type === "create_collection" || item.type === "update_collection"
         )
@@ -81,7 +107,7 @@ export function useOfflineSync(): OfflineSyncState {
 
       const cards = Array.from(cardMap.values());
       const collections = Array.from(collectionMap.values());
-      const studyLogs = queue
+      const studyLogs = syncItems
         .filter((item) => item.type === "study")
         .map((item) => item.payload as StudyLog);
 
@@ -125,11 +151,19 @@ export function useOfflineSync(): OfflineSyncState {
         });
       }
 
-      await clearQueue(queue.map((item) => item.id));
-      setQueueState([]);
+      syncItems.forEach((item) => processedIds.add(item.id));
+
+      if (processedIds.size > 0) {
+        await clearQueue([...processedIds]);
+        setQueueState((prev) => prev.filter((item) => !processedIds.has(item.id)));
+      }
       setLastSyncAt(new Date().toISOString());
     } catch {
-      // Leave queue intact for next attempt.
+      if (processedIds.size > 0) {
+        await clearQueue([...processedIds]);
+        setQueueState((prev) => prev.filter((item) => !processedIds.has(item.id)));
+      }
+      // Leave remaining queue intact for next attempt.
     }
   }, [isOnline, queue, updateUserData, userData]);
 

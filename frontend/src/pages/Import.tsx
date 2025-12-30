@@ -20,7 +20,7 @@ import {
 } from "../utils/indexedDb";
 
 export default function Import(): JSX.Element {
-  const { userData, updateUserData, isOnline } = useAppStore();
+  const { userData, updateUserData, enqueueAction, isOnline } = useAppStore();
   const [catalog, setCatalog] = useState<DatasetInfo[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [downloadState, setDownloadState] = useState<Record<string, DatasetMeta>>({});
@@ -184,10 +184,24 @@ export default function Import(): JSX.Element {
       }
     });
 
+    const queueItem = {
+      id: `${Date.now()}-dataset-selection`,
+      type: "dataset_selection" as const,
+      payload: localSelection,
+      created_at: localSelection.updated_at
+    };
+
+    if (!isOnline) {
+      await enqueueAction(queueItem);
+      setDatasetStatus("Saved locally. Sync when online.");
+      return;
+    }
+
     try {
       await updateDatasetSelection(selected);
       setDatasetStatus("Selection saved.");
     } catch (error) {
+      await enqueueAction(queueItem);
       setDatasetStatus("Saved locally. Sync when online.");
     }
   }

@@ -6,7 +6,11 @@ import type { Card, StudyMode } from "../types";
 import { useAppStore } from "../store/AppStore";
 import { useSRS } from "../hooks/useSRS";
 import { useAuthStore } from "../store/AuthStore";
-import { getLastStudyCollectionSelection, setLastStudyCollectionSelection } from "../utils/indexedDb";
+import {
+  getLastStudyCollectionSelection,
+  setLastStudyCollectionSelection,
+  type StudyCollectionSelection
+} from "../utils/indexedDb";
 
 function isDue(card: Card): boolean {
   return new Date(card.next_due).getTime() <= Date.now();
@@ -22,14 +26,9 @@ export default function Study(): JSX.Element {
   const [startedAt, setStartedAt] = useState(Date.now());
   const [mode, setMode] = useState<StudyMode>("standard");
   const [collectionId, setCollectionId] = useState<number | "all">("all");
-  const [collectionTouched, setCollectionTouched] = useState(false);
-  const [localSelection, setLocalSelection] = useState<number | "all" | null>(null);
+  const [localSelection, setLocalSelection] = useState<StudyCollectionSelection | null>(null);
   const [localSelectionLoaded, setLocalSelectionLoaded] = useState(false);
   const selectionUserId = user?.id ?? userData.user.id;
-
-  useEffect(() => {
-    setCollectionTouched(false);
-  }, [user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -68,6 +67,34 @@ export default function Study(): JSX.Element {
     return null;
   }, [userData.cards, userData.study_logs]);
 
+  const settingsSelection = useMemo(() => {
+    const settings = (user?.settings ?? {}) as Record<string, unknown>;
+    const combined = settings["study_collection"];
+    if (typeof combined === "object" && combined !== null) {
+      const value = (combined as { value?: unknown }).value;
+      const updated_at = (combined as { updated_at?: unknown }).updated_at;
+      if (value === "all" || typeof value === "number") {
+        return {
+          value,
+          updated_at: typeof updated_at === "string" ? updated_at : null
+        } satisfies StudyCollectionSelection;
+      }
+    }
+
+    const storedUpdatedAt =
+      typeof settings["study_collection_updated_at"] === "string"
+        ? (settings["study_collection_updated_at"] as string)
+        : null;
+    const storedId = settings["study_collection_id"];
+    if (typeof storedId === "number") {
+      return { value: storedId, updated_at: storedUpdatedAt };
+    }
+    if (storedUpdatedAt) {
+      return { value: "all", updated_at: storedUpdatedAt };
+    }
+    return null;
+  }, [user]);
+
   const selectedCollectionCardCount = useMemo(() => {
     if (collectionId === "all") {
       return userData.cards.length;
@@ -86,29 +113,107 @@ export default function Study(): JSX.Element {
   }, [user]);
 
   useEffect(() => {
-    if (collectionTouched || !localSelectionLoaded) {
+    if (!localSelectionLoaded) {
       return;
     }
-    const settings = user?.settings ?? {};
-    const storedCollection = settings["study_collection_id"];
-    if (localSelection === "all") {
-      setCollectionId("all");
-      return;
+
+    const toTimestamp = (value: string | null | undefined): number | null => {
+      if (!value) {
+        return null;
+      }
+      const parsed = Date.parse(value);
+      return Number.isNaN(parsed) ? null : parsed;
+    };
+
+    const local = localSelection;
+    const localTs = toTimestamp(local?.updated_at ?? null);
+    const settingsTs = toTimestamp(settingsSelection?.updated_at ?? null);
+
+    let resolved: StudyCollectionSelection | null = null;
+    let source: "local" | "remote" | "fallback" = "fallback";
+
+    if (local && settingsSelection) {
+      if (localTs !== null && settingsTs !== null) {
+        if (localTs >= settingsTs) {
+          resolved = local;
+          source = "local";
+        } else {
+          resolved = settingsSelection;
+          source = "remote";
+        }
+      } else if (localTs !== null && settingsTs === null) {
+        resolved = local;
+        source = "local";
+      } else if (localTs === null && settingsTs !== null) {
+        resolved = settingsSelection;
+        source = "remote";
+      } else {
+        resolved = local;
+        source = "local";
+      }
+    } else if (local) {
+      resolved = local;
+      source = "local";
+    } else if (settingsSelection) {
+      resolved = settingsSelection;
+      source = "remote";
+    } else if (typeof mostRecentCollectionId === "number") {
+      resolved = { value: mostRecentCollectionId, updated_at: null };
+      source = "fallback";
+    } else {
+      resolved = { value: "all", updated_at: null };
+      source = "fallback";
     }
-    if (typeof localSelection === "number") {
-      setCollectionId(localSelection);
-      return;
+
+    if (resolved) {
+      setCollectionId(resolved.value);
     }
-    if (typeof storedCollection === "number") {
-      setCollectionId(storedCollection);
-      return;
+
+    let syncedLocal = local;
+    if (source === "local" && local && !local.updated_at) {
+      const updated = { ...local, updated_at: new Date().toISOString() };
+      syncedLocal = updated;
+      setLocalSelection(updated);
+      void setLastStudyCollectionSelection(updated, selectionUserId);
     }
-    if (typeof mostRecentCollectionId === "number") {
-      setCollectionId(mostRecentCollectionId);
-      return;
+
+    if (source === "remote" && settingsSelection) {
+      if (
+        !syncedLocal ||
+        syncedLocal.value !== settingsSelection.value ||
+        syncedLocal.updated_at !== settingsSelection.updated_at
+      ) {
+        setLocalSelection(settingsSelection);
+        void setLastStudyCollectionSelection(settingsSelection, selectionUserId);
+      }
     }
-    setCollectionId("all");
-  }, [collectionTouched, localSelection, localSelectionLoaded, mostRecentCollectionId, user]);
+
+    if (source === "local" && syncedLocal && isOnline && user) {
+      const needsSync =
+        !settingsSelection ||
+        syncedLocal.value !== settingsSelection.value ||
+        syncedLocal.updated_at !== settingsSelection.updated_at;
+      if (needsSync) {
+        const nextSettings = { ...(user.settings ?? {}) } as Record<string, unknown>;
+        if (syncedLocal.value === "all") {
+          delete nextSettings["study_collection_id"];
+        } else {
+          nextSettings["study_collection_id"] = syncedLocal.value;
+        }
+        nextSettings["study_collection_updated_at"] = syncedLocal.updated_at;
+        void saveSettings(nextSettings);
+      }
+    }
+  }, [
+    isOnline,
+    localSelection,
+    localSelectionLoaded,
+    mostRecentCollectionId,
+    saveSettings,
+    selectionUserId,
+    settingsSelection,
+    user
+  ]);
 
   const fallbackQueue = useMemo(() => {
     let cards = [...userData.cards].filter(isDue);
@@ -173,13 +278,16 @@ export default function Study(): JSX.Element {
   }
 
   async function handleCollectionChange(next: string) {
-    setCollectionTouched(true);
+    const now = new Date().toISOString();
     if (next === "all") {
       setCollectionId("all");
-      void setLastStudyCollectionSelection("all", selectionUserId);
+      const selection: StudyCollectionSelection = { value: "all", updated_at: now };
+      setLocalSelection(selection);
+      void setLastStudyCollectionSelection(selection, selectionUserId);
       if (user && isOnline) {
         const settings = { ...(user.settings ?? {}) };
         delete settings["study_collection_id"];
+        settings["study_collection_updated_at"] = now;
         try {
           await saveSettings(settings);
         } catch {
@@ -194,10 +302,16 @@ export default function Study(): JSX.Element {
       return;
     }
     setCollectionId(parsed);
-    void setLastStudyCollectionSelection(parsed, selectionUserId);
+    const selection: StudyCollectionSelection = { value: parsed, updated_at: now };
+    setLocalSelection(selection);
+    void setLastStudyCollectionSelection(selection, selectionUserId);
     if (user && isOnline) {
       try {
-        await saveSettings({ ...(user.settings ?? {}), study_collection_id: parsed });
+        await saveSettings({
+          ...(user.settings ?? {}),
+          study_collection_id: parsed,
+          study_collection_updated_at: now
+        });
       } catch {
         // Ignore settings errors when offline or unreachable.
       }
