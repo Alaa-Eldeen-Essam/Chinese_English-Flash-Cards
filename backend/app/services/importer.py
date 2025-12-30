@@ -83,6 +83,10 @@ class DictEntry:
     meanings: list[str]
     examples: list[str]
     tags: list[str]
+    pinyin_normalized: str = ""
+    hsk_level: Optional[int] = None
+    pos: Optional[str] = None
+    frequency: Optional[float] = None
 
 
 @dataclass
@@ -101,6 +105,7 @@ class CsvMapping:
     meanings: Optional[str] = None
     examples: Optional[str] = None
     tags: Optional[str] = None
+    hsk_level: Optional[str] = None
     frequency: Optional[str] = None
     part_of_speech: Optional[str] = None
 
@@ -159,14 +164,25 @@ def parse_csv_file(path: Path, mapping: CsvMapping) -> list[DictEntry]:
             examples = split_values(row.get(mapping.examples or "") or "")
             tags = split_values(row.get(mapping.tags or "") or "")
 
+            hsk_level = None
+            if mapping.hsk_level:
+                raw_level = (row.get(mapping.hsk_level) or "").strip()
+                match = re.search(r"([1-9])", raw_level)
+                if match:
+                    hsk_level = int(match.group(1))
+
+            frequency = None
             if mapping.frequency:
-                frequency = (row.get(mapping.frequency) or "").strip()
-                if frequency:
-                    tags.append(f"freq:{frequency}")
+                raw_frequency = (row.get(mapping.frequency) or "").strip()
+                if raw_frequency:
+                    try:
+                        frequency = float(raw_frequency)
+                    except ValueError:
+                        frequency = None
+
+            pos = None
             if mapping.part_of_speech:
-                pos = (row.get(mapping.part_of_speech) or "").strip()
-                if pos:
-                    tags.append(f"pos:{pos}")
+                pos = (row.get(mapping.part_of_speech) or "").strip() or None
 
             entries.append(
                 DictEntry(
@@ -175,10 +191,54 @@ def parse_csv_file(path: Path, mapping: CsvMapping) -> list[DictEntry]:
                     pinyin=pinyin,
                     meanings=meanings,
                     examples=examples,
-                    tags=tags
+                    tags=tags,
+                    hsk_level=hsk_level,
+                    pos=pos,
+                    frequency=frequency
                 )
             )
     return entries
+
+
+def normalize_pinyin_search(pinyin: str) -> str:
+    if not pinyin:
+        return ""
+    normalized = normalize_pinyin(pinyin, style="numbers").lower()
+    normalized = re.sub(r"[1-5]", "", normalized)
+    normalized = normalized.replace("u:", "v").replace("\u00fc", "v")
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
+
+
+def extract_hsk_level(tags: Iterable[str]) -> Optional[int]:
+    for tag in tags:
+        match = re.match(r"^hsk\s*([1-9])$", tag.strip(), re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def extract_pos(tags: Iterable[str]) -> Optional[str]:
+    for tag in tags:
+        lower = tag.strip().lower()
+        if lower.startswith("pos:"):
+            value = tag.split(":", 1)[1].strip()
+            if value:
+                return value
+    return None
+
+
+def extract_frequency(tags: Iterable[str]) -> Optional[float]:
+    for tag in tags:
+        lower = tag.strip().lower()
+        if lower.startswith("freq:"):
+            raw = tag.split(":", 1)[1].strip()
+            if raw:
+                try:
+                    return float(raw)
+                except ValueError:
+                    return None
+    return None
 
 
 def normalize_pinyin(pinyin: str, style: str = "numbers") -> str:
@@ -258,9 +318,16 @@ def normalize_entries(entries: Iterable[DictEntry], pinyin_style: str) -> list[D
     normalized: list[DictEntry] = []
     for entry in entries:
         entry.pinyin = normalize_pinyin(entry.pinyin, style=pinyin_style)
+        entry.pinyin_normalized = normalize_pinyin_search(entry.pinyin)
         entry.tags = sorted({tag.strip() for tag in entry.tags if tag.strip()})
         entry.meanings = [meaning.strip() for meaning in entry.meanings if meaning.strip()]
         entry.examples = [example.strip() for example in entry.examples if example.strip()]
+        if entry.hsk_level is None:
+            entry.hsk_level = extract_hsk_level(entry.tags)
+        if entry.pos is None:
+            entry.pos = extract_pos(entry.tags)
+        if entry.frequency is None:
+            entry.frequency = extract_frequency(entry.tags)
         normalized.append(entry)
     return normalized
 
@@ -278,6 +345,12 @@ def dedupe_entries(entries: Iterable[DictEntry]) -> list[DictEntry]:
         existing.meanings = sorted(set(existing.meanings + entry.meanings))
         existing.examples = sorted(set(existing.examples + entry.examples))
         existing.tags = sorted(set(existing.tags + entry.tags))
+        if existing.hsk_level is None and entry.hsk_level is not None:
+            existing.hsk_level = entry.hsk_level
+        if existing.pos is None and entry.pos:
+            existing.pos = entry.pos
+        if existing.frequency is None and entry.frequency is not None:
+            existing.frequency = entry.frequency
     return list(merged.values())
 
 
@@ -290,9 +363,13 @@ def insert_dict_entries(db: Session, entries: Iterable[DictEntry], replace: bool
             simplified=entry.simplified,
             traditional=entry.traditional or None,
             pinyin=entry.pinyin,
+            pinyin_normalized=entry.pinyin_normalized or None,
             meanings=json.dumps(entry.meanings, ensure_ascii=False),
             examples=json.dumps(entry.examples, ensure_ascii=False),
             tags=json.dumps(entry.tags, ensure_ascii=False),
+            hsk_level=entry.hsk_level,
+            pos=entry.pos,
+            frequency=entry.frequency,
             last_modified=datetime.utcnow()
         )
         for entry in entries

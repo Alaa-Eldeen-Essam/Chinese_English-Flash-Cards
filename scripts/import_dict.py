@@ -18,7 +18,7 @@ import re
 import sqlite3
 import urllib.request
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable, Iterator, Optional
 
 CEDICT_PATTERN = re.compile(
     r"^(?P<trad>\S+)\s+(?P<simp>\S+)\s+\[(?P<pinyin>[^\]]+)\]\s+/(?P<defs>.+)/$"
@@ -79,9 +79,13 @@ def parse_cedict_text(path: Path) -> list[dict]:
                 "simplified": match.group("simp"),
                 "traditional": match.group("trad"),
                 "pinyin": match.group("pinyin"),
+                "pinyin_normalized": normalize_pinyin_search(match.group("pinyin")),
                 "english_defs": defs,
                 "examples": [],
-                "tags": []
+                "tags": [],
+                "hsk_level": None,
+                "pos": None,
+                "frequency": None
             }
         )
     print(f"Parsed {len(entries)} entries from CC-CEDICT, skipped {skipped} lines")
@@ -123,9 +127,13 @@ def parse_cedict_json(path: Path) -> list[dict]:
                     "simplified": simplified,
                     "traditional": traditional,
                     "pinyin": pinyin,
+                    "pinyin_normalized": normalize_pinyin_search(pinyin),
                     "english_defs": defs_list,
                     "examples": [],
-                    "tags": []
+                    "tags": [],
+                    "hsk_level": None,
+                    "pos": None,
+                    "frequency": None
                 }
             )
     print(f"Parsed {len(entries)} entries from JSON CC-CEDICT")
@@ -224,6 +232,47 @@ def load_hsk_tags(paths: Iterable[Path]) -> dict[str, set[str]]:
     return merged
 
 
+def normalize_pinyin_search(pinyin: str) -> str:
+    if not pinyin:
+        return ""
+    normalized = pinyin.lower()
+    normalized = re.sub(r"[1-5]", "", normalized)
+    normalized = normalized.replace("u:", "v").replace("\u00fc", "v")
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
+
+
+def extract_hsk_level(tags: Iterable[str]) -> Optional[int]:
+    for tag in tags:
+        match = re.match(r"^hsk\s*([1-9])$", tag.strip(), re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def extract_pos(tags: Iterable[str]) -> Optional[str]:
+    for tag in tags:
+        lower = tag.strip().lower()
+        if lower.startswith("pos:"):
+            value = tag.split(":", 1)[1].strip()
+            if value:
+                return value
+    return None
+
+
+def extract_frequency(tags: Iterable[str]) -> Optional[float]:
+    for tag in tags:
+        lower = tag.strip().lower()
+        if lower.startswith("freq:"):
+            raw = tag.split(":", 1)[1].strip()
+            if raw:
+                try:
+                    return float(raw)
+                except ValueError:
+                    return None
+    return None
+
+
 def apply_tags(entries: list[dict], hsk_tags: dict[str, set[str]]) -> None:
     by_simplified: dict[str, list[dict]] = {}
     for entry in entries:
@@ -241,9 +290,13 @@ def apply_tags(entries: list[dict], hsk_tags: dict[str, set[str]]) -> None:
                     "simplified": word,
                     "traditional": None,
                     "pinyin": "",
+                    "pinyin_normalized": "",
                     "english_defs": [],
                     "examples": [],
-                    "tags": sorted(tags)
+                    "tags": sorted(tags),
+                    "hsk_level": extract_hsk_level(tags),
+                    "pos": extract_pos(tags),
+                    "frequency": extract_frequency(tags)
                 }
             )
             created += 1
@@ -253,6 +306,12 @@ def apply_tags(entries: list[dict], hsk_tags: dict[str, set[str]]) -> None:
     for entry in entries:
         if entry["tags"]:
             entry["tags"] = sorted(set(entry["tags"]))
+        if entry.get("hsk_level") is None:
+            entry["hsk_level"] = extract_hsk_level(entry.get("tags", []))
+        if entry.get("pos") is None:
+            entry["pos"] = extract_pos(entry.get("tags", []))
+        if entry.get("frequency") is None:
+            entry["frequency"] = extract_frequency(entry.get("tags", []))
 
 
 def assign_ids(entries: list[dict]) -> None:
@@ -275,9 +334,13 @@ def init_db(conn: sqlite3.Connection) -> None:
           simplified TEXT NOT NULL,
           traditional TEXT,
           pinyin TEXT,
+          pinyin_normalized TEXT,
           meanings TEXT,
           examples TEXT,
-          tags TEXT
+          tags TEXT,
+          hsk_level INTEGER,
+          pos TEXT,
+          frequency REAL
         );
         """
     )
@@ -296,16 +359,23 @@ def insert_into_db(entries: list[dict], db_path: Path, replace: bool) -> None:
                     entry["simplified"],
                     entry["traditional"],
                     entry["pinyin"],
+                    entry.get("pinyin_normalized"),
                     json.dumps(entry["english_defs"], ensure_ascii=False),
                     json.dumps(entry["examples"], ensure_ascii=False),
-                    json.dumps(entry["tags"], ensure_ascii=False)
+                    json.dumps(entry["tags"], ensure_ascii=False),
+                    entry.get("hsk_level"),
+                    entry.get("pos"),
+                    entry.get("frequency")
                 )
                 for entry in entries
             ]
             conn.executemany(
                 """
-                INSERT INTO dict_word (id, simplified, traditional, pinyin, meanings, examples, tags)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO dict_word (
+                  id, simplified, traditional, pinyin, pinyin_normalized, meanings, examples, tags,
+                  hsk_level, pos, frequency
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows
             )
@@ -315,16 +385,23 @@ def insert_into_db(entries: list[dict], db_path: Path, replace: bool) -> None:
                     entry["simplified"],
                     entry["traditional"],
                     entry["pinyin"],
+                    entry.get("pinyin_normalized"),
                     json.dumps(entry["english_defs"], ensure_ascii=False),
                     json.dumps(entry["examples"], ensure_ascii=False),
-                    json.dumps(entry["tags"], ensure_ascii=False)
+                    json.dumps(entry["tags"], ensure_ascii=False),
+                    entry.get("hsk_level"),
+                    entry.get("pos"),
+                    entry.get("frequency")
                 )
                 for entry in entries
             ]
             conn.executemany(
                 """
-                INSERT INTO dict_word (simplified, traditional, pinyin, meanings, examples, tags)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO dict_word (
+                  simplified, traditional, pinyin, pinyin_normalized, meanings, examples, tags,
+                  hsk_level, pos, frequency
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows
             )

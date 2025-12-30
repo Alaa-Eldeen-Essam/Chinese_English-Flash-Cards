@@ -110,9 +110,13 @@ class DictWord(Base):
     simplified = Column(String, nullable=False)
     traditional = Column(String, nullable=True)
     pinyin = Column(String, nullable=True)
+    pinyin_normalized = Column(String, nullable=True)
     meanings = Column(Text, nullable=True)
     examples = Column(Text, nullable=True)
     tags = Column(Text, nullable=True)
+    hsk_level = Column(Integer, nullable=True)
+    pos = Column(String, nullable=True)
+    frequency = Column(Float, nullable=True)
     last_modified = Column(DateTime, default=datetime.utcnow)
 
 

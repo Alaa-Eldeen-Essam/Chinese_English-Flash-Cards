@@ -23,6 +23,7 @@ export default function Import(): JSX.Element {
     meanings: string;
     examples: string;
     tags: string;
+    hsk_level: string;
     frequency: string;
     part_of_speech: string;
   };
@@ -34,6 +35,7 @@ export default function Import(): JSX.Element {
     meanings: "meanings",
     examples: "examples",
     tags: "tags",
+    hsk_level: "hsk_level",
     frequency: "frequency",
     part_of_speech: "pos"
   });

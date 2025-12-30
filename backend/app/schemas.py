@@ -210,3 +210,28 @@ class ImportStatusResponse(BaseModel):
     stats: dict | None = None
     created_at: datetime
     finished_at: datetime | None = None
+
+
+class DictWordOut(BaseModel):
+    id: int
+    simplified: str
+    traditional: str | None = None
+    pinyin: str | None = None
+    pinyin_normalized: str | None = None
+    meanings: List[str]
+    examples: List[str]
+    tags: List[str]
+    hsk_level: int | None = None
+    pos: str | None = None
+    frequency: float | None = None
+
+
+class DictFacetCounts(BaseModel):
+    hsk: dict
+    pos: dict
+
+
+class DictSearchResponse(BaseModel):
+    total: int
+    results: List[DictWordOut]
+    facets: DictFacetCounts
