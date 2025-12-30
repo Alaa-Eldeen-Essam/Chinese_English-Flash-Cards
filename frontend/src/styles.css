@@ -351,6 +351,35 @@ body::before {
   margin-top: 12px;
 }
 
+.listen-button {
+  margin-top: 16px;
+}
+
+.example-line {
+  margin-top: 12px;
+}
+
+.tone-0,
+.tone-5 {
+  color: #5b6166;
+}
+
+.tone-1 {
+  color: #c43a31;
+}
+
+.tone-2 {
+  color: #d47a1f;
+}
+
+.tone-3 {
+  color: #238b45;
+}
+
+.tone-4 {
+  color: #2b62b5;
+}
+
 .study-actions {
   display: flex;
   justify-content: space-between;
@@ -486,6 +515,30 @@ textarea {
   border-radius: 12px;
   background: #f7f2e8;
   font-size: 12px;
+}
+
+.heatmap {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  align-items: end;
+  height: 120px;
+  margin-top: 16px;
+}
+
+.heatmap-cell {
+  display: grid;
+  gap: 6px;
+  align-items: end;
+  text-align: center;
+}
+
+.heatmap-bar {
+  width: 100%;
+  min-height: 12px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f3b26e, var(--accent));
+  transition: height 0.3s ease;
 }
 
 .log-info {

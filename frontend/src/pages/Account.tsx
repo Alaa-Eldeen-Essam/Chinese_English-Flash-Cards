@@ -6,6 +6,7 @@ export default function Account(): JSX.Element {
   const { user, saveSettings, logout } = useAuthStore();
   const [dailyGoal, setDailyGoal] = useState(20);
   const [toneColors, setToneColors] = useState(true);
+  const [autoTts, setAutoTts] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -16,6 +17,7 @@ export default function Account(): JSX.Element {
     const storedGoal = Number(settings["daily_goal"]);
     setDailyGoal(Number.isFinite(storedGoal) ? storedGoal : 20);
     setToneColors(settings["tone_colors"] !== false);
+    setAutoTts(settings["auto_tts"] === true);
   }, [user]);
 
   if (!user) {
@@ -33,7 +35,8 @@ export default function Account(): JSX.Element {
       await saveSettings({
         ...user.settings,
         daily_goal: dailyGoal,
-        tone_colors: toneColors
+        tone_colors: toneColors,
+        auto_tts: autoTts
       });
       setStatus("Settings saved");
     } catch (error) {
@@ -84,6 +87,14 @@ export default function Account(): JSX.Element {
               onChange={(event) => setToneColors(event.target.checked)}
             />
             Use tone coloring in study views
+          </label>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={autoTts}
+              onChange={(event) => setAutoTts(event.target.checked)}
+            />
+            Auto-play audio for each new card
           </label>
 
           {status && <div className="status-pill">{status}</div>}

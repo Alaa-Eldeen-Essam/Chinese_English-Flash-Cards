@@ -3,6 +3,7 @@ import React, { useMemo } from "react";
 import StatCard from "../components/StatCard";
 import type { PageId } from "./pageTypes";
 import { useAppStore } from "../store/AppStore";
+import { computeStreak, getDailyReviewCounts, getWeakCards } from "../utils/stats";
 
 function isDue(dueAt: string): boolean {
   return new Date(dueAt).getTime() <= Date.now();
@@ -39,6 +40,9 @@ export default function Home({ onNavigate }: HomeProps): JSX.Element {
   const totalCards = userData.cards.length;
   const dueCount = dueCards.length;
   const reviewsToday = countToday(userData.study_logs.map((log) => log.timestamp));
+  const streak = computeStreak(userData.study_logs);
+  const reviewCounts = getDailyReviewCounts(userData.study_logs, 7);
+  const weakCards = getWeakCards(userData.cards, userData.study_logs, 5);
 
   return (
     <section className="page">
@@ -60,6 +64,7 @@ export default function Home({ onNavigate }: HomeProps): JSX.Element {
         <StatCard label="Due now" value={dueCount} hint="Ready for review" />
         <StatCard label="Total cards" value={totalCards} hint="Across all decks" />
         <StatCard label="Reviews today" value={reviewsToday} hint="Keep momentum" />
+        <StatCard label="Streak" value={`${streak} days`} hint="Consecutive review days" />
         <StatCard label="Queued actions" value={queue.length} hint="Offline changes" />
       </div>
 
@@ -92,6 +97,38 @@ export default function Home({ onNavigate }: HomeProps): JSX.Element {
             </ul>
           ) : (
             <p className="muted">Schedule a study session to unlock new due cards.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="panel-grid">
+        <div className="panel">
+          <h2>Review heatmap</h2>
+          <div className="heatmap">
+            {reviewCounts.map((day) => (
+              <div key={day.date} className="heatmap-cell">
+                <div
+                  className="heatmap-bar"
+                  style={{ height: `${Math.min(100, day.count * 12)}%` }}
+                />
+                <span className="muted">{day.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="panel">
+          <h2>Weak words</h2>
+          {weakCards.length === 0 ? (
+            <p className="muted">No weak cards yet. Keep studying.</p>
+          ) : (
+            <ul className="list">
+              {weakCards.map((card) => (
+                <li key={card.id}>
+                  <span>{card.simplified}</span>
+                  <span className="muted">{card.pinyin}</span>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>
