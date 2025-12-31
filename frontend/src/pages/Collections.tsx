@@ -4,9 +4,15 @@ import { createCard, createCollection, searchCards, searchDictionary, updateCard
 import type { Card, Collection, DictWord } from "../types";
 import { useAppStore } from "../store/AppStore";
 import { getDownloadedDatasetIds, searchDatasetEntries } from "../utils/indexedDb";
+import { normalizePinyinInput } from "../utils/pinyin";
 
 function createLocalId(): number {
   return -Math.floor(Date.now() / 1000);
+}
+
+function buildLexemeKey(simplified: string, pinyin?: string | null): string {
+  const normalized = normalizePinyinInput(pinyin ?? "");
+  return `${simplified}::${normalized}`;
 }
 
 function mergeCards(online: Card[], local: Card[]): Card[] {
@@ -87,18 +93,23 @@ export default function Collections(): JSX.Element {
       setDictLoading(true);
       setDictStatus(null);
       try {
+        let onlineFailed = false;
         if (isOnline) {
-          const response = await searchDictionary({
-            query: trimmed,
-            mode: dictMode,
-            limit: 10
-          });
-          if (!active) {
-            return;
-          }
-          if (response.results.length > 0) {
-            setDictResults(response.results);
-            return;
+          try {
+            const response = await searchDictionary({
+              query: trimmed,
+              mode: dictMode,
+              limit: 10
+            });
+            if (!active) {
+              return;
+            }
+            if (response.results.length > 0) {
+              setDictResults(response.results);
+              return;
+            }
+          } catch {
+            onlineFailed = true;
           }
         }
 
@@ -108,7 +119,11 @@ export default function Collections(): JSX.Element {
         }
         if (datasetIds.length === 0) {
           setDictResults([]);
-          setDictStatus("Download a dataset for offline search.");
+          setDictStatus(
+            onlineFailed
+              ? "Online search failed. Download a dataset for offline search."
+              : "Download a dataset for offline search."
+          );
           return;
         }
         const results = await searchDatasetEntries(trimmed, {
@@ -121,7 +136,11 @@ export default function Collections(): JSX.Element {
         }
         setDictResults(results);
         if (results.length === 0) {
-          setDictStatus("No matches in downloaded datasets.");
+          setDictStatus(
+            onlineFailed
+              ? "Online search failed; no matches in downloaded datasets."
+              : "No matches in downloaded datasets."
+          );
         }
       } catch {
         if (active) {
@@ -194,9 +213,12 @@ export default function Collections(): JSX.Element {
       return;
     }
     setActionStatus(null);
+    const entryKey = buildLexemeKey(entry.simplified, entry.pinyin ?? "");
     const existingCard =
       userData.cards.find((card) => card.created_from_dict_id === entry.id) ??
-      userData.cards.find((card) => card.simplified === entry.simplified);
+      userData.cards.find(
+        (card) => buildLexemeKey(card.simplified, card.pinyin) === entryKey
+      );
     const now = new Date().toISOString();
 
     if (existingCard) {

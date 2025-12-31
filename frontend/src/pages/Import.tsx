@@ -198,7 +198,18 @@ export default function Import(): JSX.Element {
     }
 
     try {
-      await updateDatasetSelection(selected);
+      const response = await updateDatasetSelection(selected);
+      setSelected(response.selected);
+      updateUserData({
+        ...userData,
+        user: {
+          ...userData.user,
+          settings: {
+            ...nextSettings,
+            datasets: response
+          }
+        }
+      });
       setDatasetStatus("Selection saved.");
     } catch (error) {
       await enqueueAction(queueItem);

@@ -4,9 +4,15 @@ import { createCard, searchDictionary, updateCard } from "../api/client";
 import type { Card, DictWord } from "../types";
 import { useAppStore } from "../store/AppStore";
 import { getDownloadedDatasetIds, searchDatasetEntries } from "../utils/indexedDb";
+import { normalizePinyinInput } from "../utils/pinyin";
 
 function createLocalCardId(): number {
   return -Math.floor(Date.now() / 1000);
+}
+
+function buildLexemeKey(simplified: string, pinyin?: string | null): string {
+  const normalized = normalizePinyinInput(pinyin ?? "");
+  return `${simplified}::${normalized}`;
 }
 
 export default function CardEditor(): JSX.Element {
@@ -50,10 +56,10 @@ export default function CardEditor(): JSX.Element {
     return map;
   }, [userData.cards]);
 
-  const cardBySimplified = useMemo(() => {
+  const cardByLexeme = useMemo(() => {
     const map = new Map<string, Card>();
     userData.cards.forEach((card) => {
-      map.set(card.simplified, card);
+      map.set(buildLexemeKey(card.simplified, card.pinyin), card);
     });
     return map;
   }, [userData.cards]);
@@ -280,18 +286,23 @@ export default function CardEditor(): JSX.Element {
       setDictLoading(true);
       setDictStatus(null);
       try {
+        let onlineFailed = false;
         if (isOnline) {
-          const response = await searchDictionary({
-            query: trimmed,
-            mode: dictMode,
-            limit: 12
-          });
-          if (!active) {
-            return;
-          }
-          if (response.results.length > 0) {
-            setDictResults(response.results);
-            return;
+          try {
+            const response = await searchDictionary({
+              query: trimmed,
+              mode: dictMode,
+              limit: 12
+            });
+            if (!active) {
+              return;
+            }
+            if (response.results.length > 0) {
+              setDictResults(response.results);
+              return;
+            }
+          } catch {
+            onlineFailed = true;
           }
         }
 
@@ -302,7 +313,11 @@ export default function CardEditor(): JSX.Element {
         setDownloadedDatasets(datasetIds);
         if (datasetIds.length === 0) {
           setDictResults([]);
-          setDictStatus("Download a dataset for offline dictionary search.");
+          setDictStatus(
+            onlineFailed
+              ? "Online search failed. Download a dataset for offline search."
+              : "Download a dataset for offline dictionary search."
+          );
           return;
         }
         const results = await searchDatasetEntries(trimmed, {
@@ -315,7 +330,11 @@ export default function CardEditor(): JSX.Element {
         }
         setDictResults(results);
         if (results.length === 0) {
-          setDictStatus("No matches in downloaded datasets.");
+          setDictStatus(
+            onlineFailed
+              ? "Online search failed; no matches in downloaded datasets."
+              : "No matches in downloaded datasets."
+          );
         }
       } catch {
         if (active) {
@@ -447,7 +466,8 @@ export default function CardEditor(): JSX.Element {
             <ul className="list selectable">
               {dictResults.map((entry) => {
                 const existingCard =
-                  cardByDictId.get(entry.id) ?? cardBySimplified.get(entry.simplified);
+                  cardByDictId.get(entry.id) ??
+                  cardByLexeme.get(buildLexemeKey(entry.simplified, entry.pinyin ?? ""));
                 const existingCollections = existingCard?.collection_ids ?? [];
                 const missingCollections = selectedCollections.filter(
                   (id) => !existingCollections.includes(id)

@@ -69,7 +69,21 @@ export function useOfflineSync(): OfflineSyncState {
       const payload = latestSelection.payload as { selected?: string[] };
       const selected = Array.isArray(payload?.selected) ? payload.selected : [];
       try {
-        await updateDatasetSelection(selected);
+        const response = await updateDatasetSelection(selected);
+        const currentSettings =
+          typeof userData.user.settings === "object" && userData.user.settings !== null
+            ? userData.user.settings
+            : {};
+        updateUserData({
+          ...userData,
+          user: {
+            ...userData.user,
+            settings: {
+              ...currentSettings,
+              datasets: response
+            }
+          }
+        });
         datasetSelectionItems.forEach((item) => processedIds.add(item.id));
       } catch {
         // Keep dataset selection items for next sync attempt.
