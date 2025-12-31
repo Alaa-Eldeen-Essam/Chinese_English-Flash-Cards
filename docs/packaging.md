@@ -66,6 +66,19 @@ npm install --save-dev electron electron-builder
 
 Then add scripts and `electron-builder` config to package Windows/Mac/Linux.
 
+Windows packaging (NSIS + portable) is configured in `desktop/package.json`.
+
+## Release workflow (GitHub Actions)
+
+Tag a release (e.g. `v0.1.0`) to build the Windows installer:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Artifacts are uploaded from `desktop/dist/`.
+
 ## Mobile (Expo / React Native)
 
 Scaffold lives in `mobile/`.

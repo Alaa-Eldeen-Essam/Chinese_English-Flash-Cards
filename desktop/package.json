@@ -9,7 +9,7 @@
     "electron": "wait-on http://localhost:5173 && electron .",
     "dev": "concurrently -k \"npm:backend\" \"npm:frontend\" \"npm:electron\"",
     "build:frontend": "cd ../frontend && npm run build",
-    "build:backend": "pyinstaller -F -n sc-flashcards-backend ../backend/app/main.py",
+    "build:backend": "pyinstaller -F -n sc-flashcards-backend ../backend/app/main.py --distpath ../dist",
     "pack": "npm run build:frontend && npm run build:backend && electron-builder"
   },
   "devDependencies": {
@@ -23,6 +23,15 @@
     "productName": "Simplified Chinese Flashcards",
     "directories": {
       "output": "dist"
+    },
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true
     },
     "files": [
       "main.js",

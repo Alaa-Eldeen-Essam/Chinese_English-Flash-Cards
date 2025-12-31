@@ -1,0 +1,50 @@
+name: desktop-release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Install frontend deps
+        run: npm install --prefix frontend
+
+      - name: Install desktop deps
+        run: npm install --prefix desktop
+
+      - name: Build frontend
+        run: npm run build --prefix frontend
+
+      - name: Build backend binary
+        run: pyinstaller -F -n sc-flashcards-backend backend/app/main.py --distpath dist
+
+      - name: Package desktop app (Windows)
+        run: npm run pack --prefix desktop
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sc-flashcards-windows
+          path: desktop/dist/*
