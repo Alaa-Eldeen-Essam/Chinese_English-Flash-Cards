@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { fetchUserDump, syncUserData, updateDatasetSelection } from "../api/client";
+import { deleteCard, deleteCollection, fetchUserDump, syncUserData, updateDatasetSelection } from "../api/client";
 import type { Card, Collection, StudyLog, SyncQueueItem, UserData } from "../types";
 import { createEmptyUserData } from "../utils/data";
 import { clearQueue, enqueue, getQueue, getUserData, setUserData } from "../utils/indexedDb";
@@ -90,7 +90,50 @@ export function useOfflineSync(): OfflineSyncState {
       }
     }
 
-    const syncItems = queue.filter((item) => item.type !== "dataset_selection");
+    const deleteItems = queue.filter(
+      (item) => item.type === "delete_card" || item.type === "delete_collection"
+    );
+    const deletedCardIds = new Set<number>();
+    const deletedCollectionIds = new Set<number>();
+    deleteItems.forEach((item) => {
+      const payload = item.payload as { id?: number };
+      if (typeof payload?.id === "number") {
+        if (item.type === "delete_card") {
+          deletedCardIds.add(payload.id);
+        } else {
+          deletedCollectionIds.add(payload.id);
+        }
+      }
+    });
+
+    for (const item of deleteItems) {
+      const payload = item.payload as { id?: number };
+      if (typeof payload?.id !== "number") {
+        processedIds.add(item.id);
+        continue;
+      }
+      if (payload.id <= 0) {
+        processedIds.add(item.id);
+        continue;
+      }
+      try {
+        if (item.type === "delete_card") {
+          await deleteCard(payload.id);
+        } else {
+          await deleteCollection(payload.id);
+        }
+        processedIds.add(item.id);
+      } catch {
+        // Keep delete items for next sync attempt.
+      }
+    }
+
+    const syncItems = queue.filter(
+      (item) =>
+        item.type !== "dataset_selection" &&
+        item.type !== "delete_card" &&
+        item.type !== "delete_collection"
+    );
     if (syncItems.length === 0) {
       if (processedIds.size > 0) {
         await clearQueue([...processedIds]);
@@ -102,11 +145,16 @@ export function useOfflineSync(): OfflineSyncState {
     try {
       const cardMap = new Map<number, Card>();
       const collectionMap = new Map<number, Collection>();
+      const ignoredIds = new Set<string>();
 
       syncItems
         .filter((item) => item.type === "create_card" || item.type === "update_card")
         .forEach((item) => {
           const card = item.payload as Card;
+          if (deletedCardIds.has(card.id)) {
+            ignoredIds.add(item.id);
+            return;
+          }
           cardMap.set(card.id, card);
         });
 
@@ -116,6 +164,10 @@ export function useOfflineSync(): OfflineSyncState {
         )
         .forEach((item) => {
           const collection = item.payload as Collection;
+          if (deletedCollectionIds.has(collection.id)) {
+            ignoredIds.add(item.id);
+            return;
+          }
           collectionMap.set(collection.id, collection);
         });
 
@@ -123,7 +175,10 @@ export function useOfflineSync(): OfflineSyncState {
       const collections = Array.from(collectionMap.values());
       const studyLogs = syncItems
         .filter((item) => item.type === "study")
-        .map((item) => item.payload as StudyLog);
+        .map((item) => item.payload as StudyLog)
+        .filter((log) => !deletedCardIds.has(log.card_id));
+
+      ignoredIds.forEach((id) => processedIds.add(id));
 
       const response = await syncUserData({
         cards,

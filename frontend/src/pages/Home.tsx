@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import StatCard from "../components/StatCard";
 import type { PageId } from "./pageTypes";
@@ -10,6 +10,7 @@ import {
   getDailyReviewCounts,
   getWeakCards
 } from "../utils/stats";
+import { getDownloadedDatasetIds } from "../utils/indexedDb";
 
 function isDue(dueAt: string): boolean {
   return new Date(dueAt).getTime() <= Date.now();
@@ -33,6 +34,23 @@ type HomeProps = {
 
 export default function Home({ onNavigate }: HomeProps): JSX.Element {
   const { userData, isOnline, queue, lastSyncAt } = useAppStore();
+  const [downloadedDatasets, setDownloadedDatasets] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    void getDownloadedDatasetIds()
+      .then((ids) => {
+        if (active) {
+          setDownloadedDatasets(ids);
+        }
+      })
+      .catch(() => {
+        // Ignore dataset meta errors.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const { dueCards, upcomingCards } = useMemo(() => {
     const due = userData.cards.filter((card) => isDue(card.next_due));
@@ -68,6 +86,18 @@ export default function Home({ onNavigate }: HomeProps): JSX.Element {
           Start a session
         </button>
       </header>
+
+      {downloadedDatasets.length === 0 && (
+        <div className="panel callout">
+          <h2>Download a dictionary</h2>
+          <p>
+            Grab CC-CEDICT and HSK packs to unlock dictionary search and richer study sessions.
+          </p>
+          <button className="secondary" onClick={() => onNavigate("import")}>
+            Go to Import
+          </button>
+        </div>
+      )}
 
       <div className="stat-grid">
         <StatCard label="Due now" value={dueCount} hint="Ready for review" />

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-import { createCard, createCollection, searchCards, searchDictionary, updateCard } from "../api/client";
+import { createCard, createCollection, deleteCard, deleteCollection, searchCards, searchDictionary, updateCard, updateCollection } from "../api/client";
 import type { Card, Collection, DictWord } from "../types";
 import { useAppStore } from "../store/AppStore";
 import { getDownloadedDatasetIds, searchDatasetEntries } from "../utils/indexedDb";
@@ -38,6 +38,9 @@ export default function Collections(): JSX.Element {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selected, setSelected] = useState<Collection | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editStatus, setEditStatus] = useState<string | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
@@ -63,6 +66,17 @@ export default function Collections(): JSX.Element {
       .catch(() => setCards([]));
   }, [selected, isOnline]);
 
+  useEffect(() => {
+    if (!selected) {
+      setEditName("");
+      setEditDescription("");
+      return;
+    }
+    setEditName(selected.name);
+    setEditDescription(selected.description ?? "");
+    setEditStatus(null);
+  }, [selected]);
+
   const offlineCards = useMemo(() => {
     if (!selected) {
       return [];
@@ -76,6 +90,13 @@ export default function Collections(): JSX.Element {
     }
     return mergeCards(cards, offlineCards);
   }, [cards, offlineCards, selected]);
+
+  const displayCards = useMemo(() => {
+    if (!selected) {
+      return [];
+    }
+    return isOnline ? mergedCards : offlineCards;
+  }, [isOnline, mergedCards, offlineCards, selected]);
 
   useEffect(() => {
     let active = true;
@@ -324,6 +345,142 @@ export default function Collections(): JSX.Element {
     setActionStatus("Card added offline.");
   }
 
+  async function handleUpdateCollection(event: React.FormEvent) {
+    event.preventDefault();
+    if (!selected) {
+      return;
+    }
+    setEditStatus(null);
+    const now = new Date().toISOString();
+
+    if (isOnline && selected.id > 0) {
+      try {
+        const updated = await updateCollection(selected.id, {
+          name: editName,
+          description: editDescription
+        });
+        updateUserData({
+          ...userData,
+          collections: userData.collections.map((collection) =>
+            collection.id === updated.id ? updated : collection
+          ),
+          last_modified: now
+        });
+        setSelected(updated);
+        setEditStatus("Collection updated.");
+        return;
+      } catch {
+        setEditStatus("Update failed, using offline draft.");
+      }
+    }
+
+    const offlineUpdated: Collection = {
+      ...selected,
+      name: editName,
+      description: editDescription,
+      last_modified: now
+    };
+    updateUserData({
+      ...userData,
+      collections: userData.collections.map((collection) =>
+        collection.id === offlineUpdated.id ? offlineUpdated : collection
+      ),
+      last_modified: now
+    });
+    setSelected(offlineUpdated);
+    await enqueueAction({
+      id: `${Date.now()}-collection-update`,
+      type: "update_collection",
+      payload: offlineUpdated,
+      created_at: now
+    });
+    setEditStatus("Collection updated offline.");
+  }
+
+  async function handleDeleteCollection() {
+    if (!selected) {
+      return;
+    }
+    const confirmed = window.confirm(`Delete "${selected.name}"? This cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+    setEditStatus(null);
+    const now = new Date().toISOString();
+    const remainingCollections = userData.collections.filter(
+      (collection) => collection.id !== selected.id
+    );
+    const updatedCards = userData.cards.map((card) => {
+      const nextCollections = (card.collection_ids ?? []).filter((id) => id !== selected.id);
+      if (nextCollections.length === (card.collection_ids ?? []).length) {
+        return card;
+      }
+      return {
+        ...card,
+        collection_ids: nextCollections,
+        last_modified: now
+      };
+    });
+    updateUserData({
+      ...userData,
+      collections: remainingCollections,
+      cards: updatedCards,
+      last_modified: now
+    });
+    setSelected(null);
+
+    if (isOnline && selected.id > 0) {
+      try {
+        await deleteCollection(selected.id);
+        setEditStatus("Collection deleted.");
+        return;
+      } catch {
+        setEditStatus("Delete failed, queued offline.");
+      }
+    }
+
+    await enqueueAction({
+      id: `${Date.now()}-collection-delete`,
+      type: "delete_collection",
+      payload: { id: selected.id },
+      created_at: now
+    });
+    setEditStatus("Collection deleted locally.");
+  }
+
+  async function handleDeleteCard(card: Card) {
+    const confirmed = window.confirm(`Delete "${card.simplified}"?`);
+    if (!confirmed) {
+      return;
+    }
+    const now = new Date().toISOString();
+    updateUserData({
+      ...userData,
+      cards: userData.cards.filter((item) => item.id !== card.id),
+      study_logs: userData.study_logs.filter((log) => log.card_id !== card.id),
+      last_modified: now
+    });
+    setCards((prev) => prev.filter((item) => item.id !== card.id));
+
+    if (isOnline && card.id > 0) {
+      try {
+        await deleteCard(card.id);
+        setActionStatus("Card deleted.");
+        return;
+      } catch {
+        setActionStatus("Delete failed, queued offline.");
+      }
+    }
+
+    await enqueueAction({
+      id: `${Date.now()}-card-delete`,
+      type: "delete_card",
+      payload: { id: card.id },
+      created_at: now
+    });
+    setActionStatus("Card deleted locally.");
+  }
+
   return (
     <section className="page">
       <header className="page-header">
@@ -380,6 +537,33 @@ export default function Collections(): JSX.Element {
         {!selected && <p className="muted">Select a collection to view cards.</p>}
         {selected && (
           <div className="form">
+            <h3>Edit collection</h3>
+            <form className="form" onSubmit={handleUpdateCollection}>
+              <label>
+                Name
+                <input
+                  value={editName}
+                  onChange={(event) => setEditName(event.target.value)}
+                />
+              </label>
+              <label>
+                Description
+                <textarea
+                  value={editDescription}
+                  onChange={(event) => setEditDescription(event.target.value)}
+                />
+              </label>
+              <div className="inline-meta">
+                <button className="primary" type="submit">
+                  Save changes
+                </button>
+                <button className="secondary" type="button" onClick={handleDeleteCollection}>
+                  Delete collection
+                </button>
+              </div>
+              {editStatus && <p className="muted">{editStatus}</p>}
+            </form>
+
             <label>
               Add from dictionary
               <div className="inline-meta">
@@ -432,28 +616,22 @@ export default function Collections(): JSX.Element {
           </div>
         )}
 
-        {selected && !isOnline && offlineCards.length === 0 && (
-          <p className="muted">No offline cards in this collection yet.</p>
-        )}
-        {selected && isOnline && mergedCards.length === 0 && (
+        {selected && displayCards.length === 0 && (
           <p className="muted">No cards in this collection yet.</p>
         )}
-        {selected && !isOnline && offlineCards.length > 0 && (
+        {selected && displayCards.length > 0 && (
           <ul className="list">
-            {offlineCards.map((card) => (
+            {displayCards.map((card) => (
               <li key={card.id}>
                 <span>{card.simplified}</span>
                 <span className="muted">{card.pinyin}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {selected && isOnline && mergedCards.length > 0 && (
-          <ul className="list">
-            {mergedCards.map((card) => (
-              <li key={card.id}>
-                <span>{card.simplified}</span>
-                <span className="muted">{card.pinyin}</span>
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={() => handleDeleteCard(card)}
+                >
+                  Delete
+                </button>
               </li>
             ))}
           </ul>

@@ -33,6 +33,7 @@ export default function CardEditor(): JSX.Element {
   const [selectedCollections, setSelectedCollections] = useState<number[]>([]);
   const [sourceDictId, setSourceDictId] = useState<number | null>(null);
   const [downloadedDatasets, setDownloadedDatasets] = useState<string[]>([]);
+  const [editingCardId, setEditingCardId] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -85,7 +86,9 @@ export default function CardEditor(): JSX.Element {
     setPinyin(card.pinyin);
     setMeanings(card.meanings.join("; "));
     setTags(card.tags.join(", "));
-    setSourceDictId(null);
+    setSourceDictId(card.created_from_dict_id ?? null);
+    setSelectedCollections(card.collection_ids ?? []);
+    setEditingCardId(card.id);
   }
 
   function applyDictEntry(entry: DictWord) {
@@ -94,6 +97,7 @@ export default function CardEditor(): JSX.Element {
     setMeanings(entry.meanings.join("; "));
     setTags(entry.tags.join(", "));
     setSourceDictId(entry.id);
+    setEditingCardId(null);
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -114,6 +118,62 @@ export default function CardEditor(): JSX.Element {
 
     setStatus(null);
 
+    if (editingCardId) {
+      const existing = userData.cards.find((card) => card.id === editingCardId);
+      if (!existing) {
+        setEditingCardId(null);
+      } else {
+        const now = new Date().toISOString();
+        if (isOnline && existing.id > 0) {
+          try {
+            const updated = await updateCard(existing.id, {
+              simplified: payload.simplified,
+              pinyin: payload.pinyin,
+              meanings: payload.meanings,
+              tags: payload.tags,
+              collection_ids: payload.collection_ids
+            });
+            updateUserData({
+              ...userData,
+              cards: userData.cards.map((card) => (card.id === updated.id ? updated : card)),
+              last_modified: now
+            });
+            setStatus("Card updated.");
+            setEditingCardId(null);
+            return;
+          } catch {
+            setStatus("Update failed, using offline draft");
+          }
+        }
+
+        const offlineUpdated: Card = {
+          ...existing,
+          simplified: payload.simplified,
+          pinyin: payload.pinyin,
+          meanings: payload.meanings,
+          tags: payload.tags,
+          collection_ids: payload.collection_ids,
+          last_modified: now
+        };
+        updateUserData({
+          ...userData,
+          cards: userData.cards.map((card) =>
+            card.id === offlineUpdated.id ? offlineUpdated : card
+          ),
+          last_modified: now
+        });
+        await enqueueAction({
+          id: `${Date.now()}-card-update`,
+          type: "update_card",
+          payload: offlineUpdated,
+          created_at: now
+        });
+        setStatus("Card updated offline.");
+        setEditingCardId(null);
+        return;
+      }
+    }
+
     if (isOnline) {
       try {
         const created = await createCard(payload);
@@ -127,6 +187,7 @@ export default function CardEditor(): JSX.Element {
         setMeanings("");
         setTags("");
         setSourceDictId(null);
+        setSelectedCollections([]);
         return;
       } catch (error) {
         setStatus("Create failed, using offline draft");
@@ -169,6 +230,8 @@ export default function CardEditor(): JSX.Element {
     setMeanings("");
     setTags("");
     setSourceDictId(null);
+    setSelectedCollections([]);
+    setEditingCardId(null);
   }
 
   function toggleCollection(collectionId: number) {
@@ -425,8 +488,25 @@ export default function CardEditor(): JSX.Element {
               )}
             </div>
             <button className="primary" type="submit">
-              Save card
+              {editingCardId ? "Update card" : "Save card"}
             </button>
+            {editingCardId && (
+              <button
+                className="secondary"
+                type="button"
+                onClick={() => {
+                  setEditingCardId(null);
+                  setSimplified("");
+                  setPinyin("");
+                  setMeanings("");
+                  setTags("");
+                  setSelectedCollections([]);
+                  setSourceDictId(null);
+                }}
+              >
+                Cancel edit
+              </button>
+            )}
             {status && <p className="muted">{status}</p>}
           </form>
         </div>

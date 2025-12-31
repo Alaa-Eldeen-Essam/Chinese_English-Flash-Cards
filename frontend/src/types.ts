@@ -147,8 +147,10 @@ export type SyncQueueItem = {
     | "study"
     | "create_card"
     | "update_card"
+    | "delete_card"
     | "create_collection"
     | "update_collection"
+    | "delete_collection"
     | "dataset_selection";
   payload: unknown;
   created_at: string;

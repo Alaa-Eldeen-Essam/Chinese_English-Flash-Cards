@@ -137,7 +137,11 @@ def update_collection(
 
 
 def delete_collection(db: Session, collection: Collection) -> None:
+    collection.cards = []
+    db.commit()
+    db.refresh(collection)
     db.delete(collection)
+    db.commit()
     db.commit()
 
 
@@ -223,6 +227,10 @@ def update_card(
 
 
 def delete_card(db: Session, card: Card) -> None:
+    db.query(StudyLog).filter(StudyLog.card_id == card.id).delete()
+    card.collections = []
+    db.commit()
+    db.refresh(card)
     db.delete(card)
     db.commit()
 
