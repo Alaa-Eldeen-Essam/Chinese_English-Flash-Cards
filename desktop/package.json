@@ -1,0 +1,50 @@
+{
+  "name": "sc-flashcards-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "main": "main.js",
+  "scripts": {
+    "frontend": "cd ../frontend && npm run dev",
+    "backend": "cd ../backend && uvicorn app.main:app --reload",
+    "electron": "wait-on http://localhost:5173 && electron .",
+    "dev": "concurrently -k \"npm:backend\" \"npm:frontend\" \"npm:electron\"",
+    "build:frontend": "cd ../frontend && npm run build",
+    "build:backend": "pyinstaller -F -n sc-flashcards-backend ../backend/app/main.py",
+    "pack": "npm run build:frontend && npm run build:backend && electron-builder"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^30.0.0",
+    "electron-builder": "^24.9.1",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.scflashcards.app",
+    "productName": "Simplified Chinese Flashcards",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist"
+      },
+      {
+        "from": "../backend/data",
+        "to": "backend/data"
+      },
+      {
+        "from": "../dist",
+        "to": "backend",
+        "filter": [
+          "sc-flashcards-backend*",
+          "sc-flashcards-backend.exe"
+        ]
+      }
+    ]
+  }
+}

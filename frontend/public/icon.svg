@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="SC Flashcards">
+  <rect width="256" height="256" fill="#f8f5ef" />
+  <rect x="24" y="24" width="208" height="208" rx="28" fill="#1f2933" />
+  <text
+    x="50%"
+    y="56%"
+    text-anchor="middle"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="96"
+    fill="#f8f5ef"
+    letter-spacing="2"
+  >
+    SC
+  </text>
+</svg>

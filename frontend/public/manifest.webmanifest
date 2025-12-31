@@ -1,0 +1,18 @@
+{
+  "name": "Simplified Chinese Flashcards",
+  "short_name": "SC Flashcards",
+  "description": "Offline-first spaced repetition flashcards for Simplified Chinese.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8f5ef",
+  "theme_color": "#1f2933",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
