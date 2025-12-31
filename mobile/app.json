@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Simplified Chinese Flashcards",
+    "slug": "sc-flashcards",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"]
+  }
+}

@@ -68,13 +68,12 @@ Then add scripts and `electron-builder` config to package Windows/Mac/Linux.
 
 ## Mobile (Expo / React Native)
 
-If you move to React Native later:
+Scaffold lives in `mobile/`.
 
 ```bash
-npm install -g expo-cli
-expo init sc-flashcards-mobile
-cd sc-flashcards-mobile
-expo start
+cd mobile
+npm install
+npm run start
 ```
 
 You can reuse the API contract and sync logic; replace IndexedDB with
