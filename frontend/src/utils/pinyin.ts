@@ -97,3 +97,23 @@ export function normalizePinyinInput(pinyin: string): string {
     .replace(/u:/g, "v")
     .replace(/\s+/g, "");
 }
+
+export function normalizePinyinForKey(pinyin: string): string {
+  const trimmed = pinyin.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const tokens = trimmed.toLowerCase().split(/\s+/);
+  const normalized = tokens.map((token) => {
+    const tone = detectTone(token);
+    let cleaned = token.replace(/[1-5]/g, "");
+    cleaned = cleaned
+      .split("")
+      .map((char) => DIACRITIC_BASE[char] ?? char)
+      .join("");
+    cleaned = cleaned.replace(/u:/g, "v");
+    cleaned = cleaned.replace(/[^a-zv]/g, "");
+    return tone > 0 ? `${cleaned}${tone}` : cleaned;
+  });
+  return normalized.filter(Boolean).join("");
+}

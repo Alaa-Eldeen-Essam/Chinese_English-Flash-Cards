@@ -133,6 +133,26 @@ export async function logoutUser(): Promise<void> {
   clearAuthTokens();
 }
 
+export async function getGoogleAuthUrl(state?: string): Promise<{ auth_url: string }> {
+  const url = new URL(`${API_PREFIX}/auth/google/start`);
+  if (state) {
+    url.searchParams.set("state", state);
+  }
+  return request<{ auth_url: string }>(url.toString(), {}, false);
+}
+
+export async function exchangeGoogleCode(code: string): Promise<AuthResponse> {
+  return request<AuthResponse>(
+    `${API_PREFIX}/auth/google/callback`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code })
+    },
+    false
+  );
+}
+
 export async function getProfile(): Promise<AuthUser> {
   return request<AuthUser>(`${API_PREFIX}/auth/me`);
 }

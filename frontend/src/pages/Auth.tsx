@@ -1,16 +1,38 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { useAuthStore } from "../store/AuthStore";
 
 type AuthMode = "login" | "register";
 
 export default function Auth(): JSX.Element {
-  const { login, register } = useAuthStore();
+  const { login, register, startGoogleLogin, finishGoogleLogin } = useAuthStore();
   const [mode, setMode] = useState<AuthMode>("login");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (!code) {
+      return;
+    }
+    const state = params.get("state");
+    setStatus("Completing Google sign-in...");
+    finishGoogleLogin(code, state)
+      .then(() => {
+        params.delete("code");
+        params.delete("state");
+        const nextQuery = params.toString();
+        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
+        window.history.replaceState({}, "", nextUrl);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "Google sign-in failed";
+        setStatus(message);
+      });
+  }, [finishGoogleLogin]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -92,7 +114,20 @@ export default function Auth(): JSX.Element {
         </form>
 
         <div className="auth-footer">
-          <span className="muted">Google sign-in available once OAuth is configured.</span>
+          <button
+            className="secondary"
+            type="button"
+            onClick={() => {
+              setStatus(null);
+              startGoogleLogin().catch((error) => {
+                const message = error instanceof Error ? error.message : "Google sign-in failed";
+                setStatus(message);
+              });
+            }}
+          >
+            Continue with Google
+          </button>
+          <span className="muted">Google sign-in requires OAuth configuration.</span>
         </div>
       </div>
     </section>

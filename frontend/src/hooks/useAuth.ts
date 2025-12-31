@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  exchangeGoogleCode,
+  getGoogleAuthUrl,
   getProfile,
   loginUser,
   logoutUser,
@@ -21,6 +23,8 @@ export type AuthState = {
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   saveSettings: (settings: Record<string, unknown>) => Promise<void>;
+  startGoogleLogin: () => Promise<void>;
+  finishGoogleLogin: (code: string, state?: string | null) => Promise<void>;
 };
 
 export function useAuth(): AuthState {
@@ -105,6 +109,26 @@ export function useAuth(): AuthState {
     setUser(updated);
   }, []);
 
+  const startGoogleLogin = useCallback(async () => {
+    const state =
+      (globalThis.crypto?.randomUUID?.() as string | undefined) ??
+      `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    sessionStorage.setItem("google_oauth_state", state);
+    const response = await getGoogleAuthUrl(state);
+    window.location.assign(response.auth_url);
+  }, []);
+
+  const finishGoogleLogin = useCallback(async (code: string, state?: string | null) => {
+    const stored = sessionStorage.getItem("google_oauth_state");
+    if (stored && state && stored !== state) {
+      throw new Error("OAuth state mismatch");
+    }
+    const response = await exchangeGoogleCode(code);
+    setAuthTokens(response.token.access_token, response.token.refresh_token);
+    setUser(response.user);
+    sessionStorage.removeItem("google_oauth_state");
+  }, []);
+
   return useMemo(
     () => ({
       user,
@@ -115,8 +139,21 @@ export function useAuth(): AuthState {
       register,
       logout,
       refresh,
-      saveSettings
+      saveSettings,
+      startGoogleLogin,
+      finishGoogleLogin
     }),
-    [user, loading, error, login, register, logout, refresh, saveSettings]
+    [
+      user,
+      loading,
+      error,
+      login,
+      register,
+      logout,
+      refresh,
+      saveSettings,
+      startGoogleLogin,
+      finishGoogleLogin
+    ]
   );
 }

@@ -4,14 +4,14 @@ import { createCard, createCollection, searchCards, searchDictionary, updateCard
 import type { Card, Collection, DictWord } from "../types";
 import { useAppStore } from "../store/AppStore";
 import { getDownloadedDatasetIds, searchDatasetEntries } from "../utils/indexedDb";
-import { normalizePinyinInput } from "../utils/pinyin";
+import { normalizePinyinForKey } from "../utils/pinyin";
 
 function createLocalId(): number {
   return -Math.floor(Date.now() / 1000);
 }
 
 function buildLexemeKey(simplified: string, pinyin?: string | null): string {
-  const normalized = normalizePinyinInput(pinyin ?? "");
+  const normalized = normalizePinyinForKey(pinyin ?? "");
   return `${simplified}::${normalized}`;
 }
 

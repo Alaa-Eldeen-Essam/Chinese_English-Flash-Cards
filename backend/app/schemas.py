@@ -47,6 +47,10 @@ class AuthLogoutRequest(BaseModel):
     refresh_token: str
 
 
+class AuthGoogleCallbackRequest(BaseModel):
+    code: str
+
+
 class UserSettingsUpdate(BaseModel):
     settings: dict
 

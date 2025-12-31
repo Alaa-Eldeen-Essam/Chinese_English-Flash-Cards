@@ -1,6 +1,10 @@
 import json
+import re
 from datetime import datetime, timezone
+from urllib.parse import urlencode
+from uuid import uuid4
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import JWTError
 from sqlalchemy.orm import Session
@@ -21,6 +25,7 @@ from ..schemas import (
     AuthLoginRequest,
     AuthLogoutRequest,
     AuthRefreshRequest,
+    AuthGoogleCallbackRequest,
     AuthRegisterRequest,
     AuthResponse,
     AuthToken,
@@ -41,6 +46,7 @@ from .utils import get_current_user
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 GOOGLE_CLIENT_ID = settings.google_client_id
+GOOGLE_CLIENT_SECRET = settings.google_client_secret
 GOOGLE_REDIRECT_URI = settings.google_redirect_uri
 
 
@@ -61,6 +67,56 @@ def _build_auth_response(user: User, access_token: str, refresh_token: str, acce
             expires_in=expires_in
         )
     )
+
+
+def _sanitize_username(value: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9_]+", "", value.lower())
+    return cleaned or "user"
+
+
+def _ensure_unique_username(db: Session, base: str) -> str:
+    candidate = _sanitize_username(base)
+    if not get_user_by_username(db, candidate):
+        return candidate
+    suffix = uuid4().hex[:6]
+    return f"{candidate}{suffix}"
+
+
+def _exchange_google_code(code: str) -> dict:
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Google OAuth is not configured"
+        )
+    try:
+        response = httpx.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uri": GOOGLE_REDIRECT_URI,
+                "grant_type": "authorization_code"
+            },
+            timeout=10.0
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=400, detail="Failed to exchange Google code") from exc
+    return response.json()
+
+
+def _fetch_google_token_info(id_token: str) -> dict:
+    try:
+        response = httpx.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": id_token},
+            timeout=10.0
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=401, detail="Invalid Google token") from exc
+    return response.json()
 
 
 @router.post("/register", response_model=AuthResponse)
@@ -173,27 +229,79 @@ def update_settings(
 
 
 @router.get("/google/start")
-def google_start() -> dict:
+def google_start(state: str | None = None) -> dict:
     if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URI:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="Google OAuth is not configured"
         )
-    auth_url = (
-        "https://accounts.google.com/o/oauth2/v2/auth"
-        f"?client_id={GOOGLE_CLIENT_ID}"
-        f"&redirect_uri={GOOGLE_REDIRECT_URI}"
-        "&response_type=code"
-        "&scope=openid%20email%20profile"
-        "&access_type=offline"
-        "&prompt=consent"
-    )
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "consent"
+    }
+    if state:
+        params["state"] = state
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
     return {"auth_url": auth_url}
 
 
-@router.post("/google/callback")
-def google_callback() -> dict:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Google OAuth callback handler not implemented"
-    )
+@router.post("/google/callback", response_model=AuthResponse)
+def google_callback(
+    payload: AuthGoogleCallbackRequest,
+    db: Session = Depends(get_db)
+) -> AuthResponse:
+    token_data = _exchange_google_code(payload.code)
+    id_token = token_data.get("id_token")
+    if not id_token:
+        raise HTTPException(status_code=400, detail="Missing Google id_token")
+
+    info = _fetch_google_token_info(id_token)
+    if info.get("aud") != GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=401, detail="Invalid token audience")
+
+    sub = info.get("sub")
+    email = info.get("email")
+    email_verified = str(info.get("email_verified", "")).lower() == "true"
+
+    if not sub:
+        raise HTTPException(status_code=400, detail="Missing Google subject")
+
+    user = db.query(User).filter(
+        User.auth_provider == "google",
+        User.oauth_subject == sub
+    ).first()
+
+    if not user and email:
+        existing = get_user_by_email(db, email)
+        if existing and existing.auth_provider != "google":
+            raise HTTPException(
+                status_code=409,
+                detail="Email already registered with password login"
+            )
+        if existing and existing.auth_provider == "google":
+            existing.oauth_subject = sub
+            db.commit()
+            user = existing
+
+    if not user:
+        if not email or not email_verified:
+            raise HTTPException(status_code=400, detail="Verified email required")
+        base_username = email.split("@")[0]
+        username = _ensure_unique_username(db, base_username)
+        user = create_user(
+            db,
+            username=username,
+            hashed_password=hash_password(uuid4().hex),
+            email=email,
+            auth_provider="google",
+            oauth_subject=sub
+        )
+
+    access_token, access_expires = create_access_token(user.id)
+    refresh_token, refresh_expires, _ = create_refresh_token(user.id)
+    store_refresh_token(db, user.id, hash_token(refresh_token), refresh_expires)
+    return _build_auth_response(user, access_token, refresh_token, access_expires)

@@ -195,6 +195,10 @@ export default function Study(): JSX.Element {
         syncedLocal.updated_at !== settingsSelection.updated_at;
       if (needsSync) {
         const nextSettings = { ...(user.settings ?? {}) } as Record<string, unknown>;
+        nextSettings["study_collection"] = {
+          value: syncedLocal.value,
+          updated_at: syncedLocal.updated_at
+        };
         if (syncedLocal.value === "all") {
           delete nextSettings["study_collection_id"];
         } else {
@@ -286,6 +290,10 @@ export default function Study(): JSX.Element {
       void setLastStudyCollectionSelection(selection, selectionUserId);
       if (user && isOnline) {
         const settings = { ...(user.settings ?? {}) };
+        settings["study_collection"] = {
+          value: "all",
+          updated_at: now
+        };
         delete settings["study_collection_id"];
         settings["study_collection_updated_at"] = now;
         try {
@@ -309,6 +317,10 @@ export default function Study(): JSX.Element {
       try {
         await saveSettings({
           ...(user.settings ?? {}),
+          study_collection: {
+            value: parsed,
+            updated_at: now
+          },
           study_collection_id: parsed,
           study_collection_updated_at: now
         });

@@ -4,14 +4,14 @@ import { createCard, searchDictionary, updateCard } from "../api/client";
 import type { Card, DictWord } from "../types";
 import { useAppStore } from "../store/AppStore";
 import { getDownloadedDatasetIds, searchDatasetEntries } from "../utils/indexedDb";
-import { normalizePinyinInput } from "../utils/pinyin";
+import { normalizePinyinForKey } from "../utils/pinyin";
 
 function createLocalCardId(): number {
   return -Math.floor(Date.now() / 1000);
 }
 
 function buildLexemeKey(simplified: string, pinyin?: string | null): string {
-  const normalized = normalizePinyinInput(pinyin ?? "");
+  const normalized = normalizePinyinForKey(pinyin ?? "");
   return `${simplified}::${normalized}`;
 }
 
@@ -33,6 +33,22 @@ export default function CardEditor(): JSX.Element {
   const [selectedCollections, setSelectedCollections] = useState<number[]>([]);
   const [sourceDictId, setSourceDictId] = useState<number | null>(null);
   const [downloadedDatasets, setDownloadedDatasets] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    void getDownloadedDatasetIds()
+      .then((ids) => {
+        if (active) {
+          setDownloadedDatasets(ids);
+        }
+      })
+      .catch(() => {
+        // Ignore dataset meta errors.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const suggestions = useMemo(() => {
     if (!query.trim()) {
