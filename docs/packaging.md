@@ -108,3 +108,9 @@ python scripts/import_dict.py --download --replace
 ```
 
 This populates `backend/data/flashcards.db` so it can be shipped with the installer.
+
+To prepare an offline bundle (frontend build + backend binary + baseline DB):
+
+```bash
+python scripts/prepare_offline_bundle.py
+```
